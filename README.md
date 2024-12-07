@@ -18,7 +18,7 @@ This command uses the [@neon-rs/cli](https://www.npmjs.com/package/@neon-rs/cli)
 
 ## Exploring tantivy
 
-See [`examples/fur.js`](./blob/main/examples/fur.js) for an example.
+See [`examples/fur.js`](./examples/fur.js) for an example.
 
 ## Available Scripts
 
