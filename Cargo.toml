@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/tantivy-node"]
+resolver = "2"

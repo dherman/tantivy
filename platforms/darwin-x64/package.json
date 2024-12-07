@@ -1,0 +1,40 @@
+{
+  "name": "@tantivy/darwin-x64",
+  "description": "Prebuilt binary package for `tantivy` on `darwin-x64`.",
+  "version": "0.1.0",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "index.node",
+  "files": [
+    "index.node"
+  ],
+  "neon": {
+    "type": "binary",
+    "rust": "x86_64-apple-darwin",
+    "node": "darwin-x64",
+    "os": "darwin",
+    "arch": "x64",
+    "abi": null
+  },
+  "author": "David Herman <david.herman@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dherman/tantivy.git"
+  },
+  "keywords": [
+    "Tantivy",
+    "Rust",
+    "search",
+    "information",
+    "retrieval"
+  ],
+  "bugs": {
+    "url": "https://github.com/dherman/tantivy/issues"
+  },
+  "homepage": "https://github.com/dherman/tantivy#readme",
+  "license": "MIT"
+}
