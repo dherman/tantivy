@@ -3,7 +3,9 @@ const { rmSync, mkdirSync, existsSync } = require('fs');
 
 const INDEX_PATH = `${__dirname}/../data`;
 
-rmSync(INDEX_PATH, { recursive: true });
+if (existsSync(INDEX_PATH)) {
+  rmSync(INDEX_PATH, { recursive: true });
+}
 mkdirSync(INDEX_PATH);
 
 const schemaBuilder = new SchemaBuilder();
