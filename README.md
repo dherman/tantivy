@@ -18,15 +18,7 @@ This command uses the [@neon-rs/cli](https://www.npmjs.com/package/@neon-rs/cli)
 
 ## Exploring tantivy
 
-After building tantivy, you can explore its exports at the Node console:
-
-```sh
-$ npm i
-$ npm run build
-$ node
-> require('.').greeting()
-{ message: 'hello node' }
-```
+See [`examples/fur.js`](./blob/main/examples/fur.js) for an example.
 
 ## Available Scripts
 
