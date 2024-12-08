@@ -6,139 +6,135 @@ import * as addon from './load.cjs';
 // Use this declaration to assign types to the addon's exports,
 // which otherwise by default are `any`.
 declare module "./load.cjs" {
-  interface BoxedSchemaBuilder {}
   interface BoxedSchema {}
   interface BoxedIndex {}
-  interface BoxedIndexWriter {}
-  interface BoxedSearch {}
-  interface BoxedQueryParser {}
-  interface BoxedQuery {}
-  interface BoxedTopDocs {}
+  interface BoxedSearcher {}
 
   type SearchResult = [number, string];
 
-  function newSchemaBuilder(): BoxedSchemaBuilder;
-  function addTextField(builder: BoxedSchemaBuilder, name: string, options: TextOptions): Field;
-  function buildSchema(builder: BoxedSchemaBuilder): BoxedSchema;
-  function createIndex(schema: BoxedSchema, path: string): BoxedIndex;
-  function createIndexWriter(index: BoxedIndex, heapSize: number): BoxedIndexWriter;
-  function newSearch(index: BoxedIndex, schema: BoxedSchema, indexWriter: BoxedIndexWriter): BoxedSearch;
-  function addDoc(search: BoxedSearch, doc: string): void;
-  function commit(search: BoxedSearch): void;
-  function newQueryParser(search: BoxedSearch, fields: number[]): BoxedQueryParser;
-  function parseQuery(queryParser: BoxedQueryParser, query: string): BoxedQuery;
-  function topDocs(limit: number): BoxedTopDocs;
-  function topSearch(search: BoxedSearch, query: BoxedQuery, collector: BoxedTopDocs): SearchResult[];
+  function newSchema(schema: SchemaDescriptor): BoxedSchema;
+  function newIndex(path: string, heapSize: number, schema: BoxedSchema, reload_on: string): BoxedIndex;
+  function addDocument(index: BoxedIndex, doc: string): BigInt;
+  function commitSync(index: BoxedIndex): void;
+  function reloadSync(index: BoxedIndex): void;
+  function newSearcher(index: BoxedIndex): BoxedSearcher;
+  function topDocsSync(searcher: BoxedSearcher, query: string, fields: number[], limit: number): SearchResult[];
 }
 
 export type TextOption = 'TEXT' | 'STORED' | 'STRING';
 export type TextOptions = TextOption[];
 export type Field = number;
 
+export type SchemaDescriptor = {
+  [key: string]: TextOptions
+};
+
+export type FieldMap = {
+  [key: string]: number
+};
+
 const _BOXED_SCHEMA: unique symbol = Symbol();
 
 export class Schema {
   [_BOXED_SCHEMA]: addon.BoxedSchema;
+  private _fields: FieldMap;
 
-  constructor(boxedSchema: addon.BoxedSchema) {
-    this[_BOXED_SCHEMA] = boxedSchema;
+  constructor(descriptor: SchemaDescriptor) {
+    this[_BOXED_SCHEMA] = addon.newSchema(descriptor);
+    this._fields = Object.create(null);
+    let i = 0;
+    for (let key in descriptor) {
+      this._fields[key] = i;
+      i++;
+    }
+    Object.freeze(this._fields);
+  }
+
+  get fields(): FieldMap {
+    return this._fields;
   }
 }
 
-export class SchemaBuilder {
-  private _boxedSchemaBuilder: addon.BoxedSchemaBuilder;
+export type ReloadPolicy = 'COMMIT_WITH_DELAY' | 'MANUAL';
 
-  constructor() {
-    this._boxedSchemaBuilder = addon.newSchemaBuilder();
-  }
-
-  addTextField(name: string, options: TextOptions): Field {
-    return addon.addTextField(this._boxedSchemaBuilder, name, options);
-  }
-
-  build(): Schema {
-    return new Schema(addon.buildSchema(this._boxedSchemaBuilder));
-  }
+export type CreateIndexOptions = {
+  path: string,
+  schema: Schema,
+  heapSize?: number,
+  reloadOn?: ReloadPolicy,
 }
 
 const _BOXED_INDEX: unique symbol = Symbol();
 
 export class Index {
   [_BOXED_INDEX]: addon.BoxedIndex;
+  private _schema: Schema;
 
-  constructor(schema: Schema, path: string) {
-    this[_BOXED_INDEX] = addon.createIndex(schema[_BOXED_SCHEMA], path);
+  constructor(options: CreateIndexOptions) {
+    this[_BOXED_INDEX] = addon.newIndex(
+      options.path,
+      options.heapSize || 10_000_000,
+      options.schema[_BOXED_SCHEMA],
+      options.reloadOn || 'COMMIT_WITH_DELAY'
+    );
+    this._schema = options.schema;
+  }
+
+  schema(): Schema {
+    return this._schema;
+  }
+
+  addDocument(doc: any): BigInt {
+    return addon.addDocument(this[_BOXED_INDEX], JSON.stringify(doc));
+  }
+
+  commitSync(): void {
+    addon.commitSync(this[_BOXED_INDEX]);
+  }
+
+  reloadSync(): void {
+    addon.reloadSync(this[_BOXED_INDEX]);
+  }
+
+  searcher(): Searcher {
+    return new Searcher(this, addon.newSearcher(this[_BOXED_INDEX]));
   }
 }
 
-const _BOXED_INDEX_WRITER: unique symbol = Symbol();
-
-export class IndexWriter {
-  [_BOXED_INDEX_WRITER]: addon.BoxedIndexWriter;
-
-  constructor(index: Index, heapSize: number) {
-    this[_BOXED_INDEX_WRITER] = addon.createIndexWriter(index[_BOXED_INDEX], heapSize);
-  }
+export type SearchOptions = {
+  fields: (string | number)[]
+  top?: number
 }
 
 export type SearchResult = addon.SearchResult;
 
-const _BOXED_SEARCH: unique symbol = Symbol();
-const _DEFAULT_TEXT_FIELDS: unique symbol = Symbol();
+const _BOXED_SEARCHER: unique symbol = Symbol();
 
-export class Search {
-  [_BOXED_SEARCH]: addon.BoxedSearch;
-  [_DEFAULT_TEXT_FIELDS]: number[];
+export class Searcher {
+  private _index: Index;
+  [_BOXED_SEARCHER]: addon.BoxedSearcher;
 
-  constructor(index: Index, schema: Schema, indexWriter: IndexWriter, defaultTextFields: number[]) {
-    this[_BOXED_SEARCH] = addon.newSearch(index[_BOXED_INDEX], schema[_BOXED_SCHEMA], indexWriter[_BOXED_INDEX_WRITER]);
-    this[_DEFAULT_TEXT_FIELDS] = defaultTextFields;
+  constructor(index: Index, boxedSearcher: addon.BoxedSearcher) {
+    this._index = index;
+    this[_BOXED_SEARCHER] = boxedSearcher;
   }
 
-  addDoc(doc: any) {
-    addon.addDoc(this[_BOXED_SEARCH], JSON.stringify(doc));
+  private interpretFields(fields: (string | number)[]): number[] {
+    const fieldsMap = this._index.schema().fields;
+    return fields.map(field => {
+      return (typeof field === 'string') ? fieldsMap[field] : field;
+    });
   }
 
-  commit() {
-    addon.commit(this[_BOXED_SEARCH]);
-  }
-
-  topSearch(query: Query, collector: TopDocs): SearchResult[] {
-    return addon.topSearch(this[_BOXED_SEARCH], query[_BOXED_QUERY], collector[_BOXED_TOP_DOCS]);
-  }
-}
-
-export class QueryParser {
-  private _boxedQueryParser: addon.BoxedQueryParser;
-
-  constructor(search: Search, fields?: number[]) {
-    this._boxedQueryParser = addon.newQueryParser(
-      search[_BOXED_SEARCH],
-      fields ?? search[_DEFAULT_TEXT_FIELDS]
+  searchSync(query: string, options: SearchOptions): SearchResult[] {
+    if (!options.top) {
+      throw new Error("only top search is implemented");
+    }
+    return addon.topDocsSync(
+      this[_BOXED_SEARCHER],
+      query,
+      this.interpretFields(options.fields),
+      options.top
     );
-  }
-
-  parse(query: string): Query {
-    return new Query(addon.parseQuery(this._boxedQueryParser, query));
-  }
-}
-
-const _BOXED_QUERY: unique symbol = Symbol();
-
-export class Query {
-  [_BOXED_QUERY]: addon.BoxedQuery;
-
-  constructor(boxedQuery: addon.BoxedQuery) {
-    this[_BOXED_QUERY] = boxedQuery;
-  }
-}
-
-const _BOXED_TOP_DOCS: unique symbol = Symbol();
-
-export class TopDocs {
-  [_BOXED_TOP_DOCS]: addon.BoxedTopDocs;
-
-  constructor(limit: number) {
-    this[_BOXED_TOP_DOCS] = addon.topDocs(limit);
   }
 }
