@@ -57,8 +57,6 @@ fn commit<'cx>(
 
 #[neon::export(name = "commitSync")]
 fn commit_sync<'cx>(
-    // TODO: can I leave this out even though we need the lifetime for the handle?
-    _cx: &mut FunctionContext<'cx>,
     index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
 ) {
     let index = index.as_ref();
@@ -133,7 +131,6 @@ fn reload<'cx>(
 
 #[neon::export(name = "reloadSync")]
 fn reload_sync<'cx>(
-    _cx: &mut FunctionContext<'cx>,
     index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
 ) {
     let index = index.as_ref();
@@ -189,10 +186,8 @@ fn top_docs<'cx>(
         })
 }
 
-
 #[neon::export(name = "topDocsSync")]
 fn top_docs_sync<'cx>(
-    _cx: &mut FunctionContext<'cx>,
     searcher: Handle<'cx, JsBox<BoxArc<Searcher>>>,
     query_str: String,
     Json(fields): Json<Vec<u32>>,
