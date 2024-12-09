@@ -214,5 +214,3 @@ fn top_docs_sync<'cx>(
 
     Json(results)
 }
-
-// TODO: async search()
