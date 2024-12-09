@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Display};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[allow(non_camel_case_types)]
@@ -25,8 +25,31 @@ impl fmt::Debug for u53 {
     }
 }
 
+#[derive(Debug)]
+pub struct ProjectionError(pub String);
+
 pub trait Project<T>: From<T> {
-    fn project(self) -> Option<T>;
+    fn project(self) -> Result<T, ProjectionError>;
+}
+
+impl Display for ProjectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ProjectionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        &self.0
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
 }
 
 impl From<u53> for f64 {
@@ -42,28 +65,28 @@ impl From<u53> for u64 {
 }
 
 impl Project<u53> for f64 {
-    fn project(self) -> Option<u53> {
+    fn project(self) -> Result<u53, ProjectionError> {
         if self.trunc() != self {
-            return None;
+            return Err(ProjectionError(format!("{self} is not an integer")));
         }
         if self < u53::MIN.into() || self > u53::MAX.into() {
-            return None;
+            return Err(ProjectionError(format!("{self} is out of range for u53")));
         }
-        return Some(u53::new(self as u64));
+        return Ok(u53::new(self as u64));
     }
 }
 
 macro_rules! impl_project {
     ($t:ident) => {
         impl Project<$t> for f64 {
-            fn project(self) -> Option<$t> {
+            fn project(self) -> Result<$t, ProjectionError> {
                 if self.trunc() != self {
-                    return None;
+                    return Err(ProjectionError(format!("{self} is not an integer")));
                 }
                 if self < $t::MIN.into() || self > $t::MAX.into() {
-                    return None;
+                    return Err(ProjectionError(format!("{self} is out of range for {}", stringify!($t))));
                 }
-                return Some(self as $t);
+                return Ok(self as $t);
             }
         }
     }

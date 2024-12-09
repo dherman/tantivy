@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-neon = { version = "1.1.0-alpha.1", features = ["serde"] }
+neon = { git = "https://github.com/neon-bindings/neon", features = ["serde"] }
 ordermap = { version = "0.5.4", features = ["serde"] }
 serde = "1.0.215"
 tantivy = "0.22.0"

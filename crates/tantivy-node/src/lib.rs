@@ -1,15 +1,15 @@
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use neon::{prelude::*, types::JsBigInt};
-use neon::types::extract::{Json, TryIntoJs};
+use neon::types::extract::{Boxed, Error, Json};
 
 use num::{u53, Project};
 use ordermap::OrderMap;
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::query::{Explanation, QueryParser};
-use tantivy::{DocAddress, Document, IndexReader, ReloadPolicy, Score, Searcher};
+use tantivy::{Document, IndexReader, ReloadPolicy, Score, Searcher};
 use tantivy::{schema::{Field, Schema, TextOptions}, Index, IndexSettings, IndexWriter, TantivyDocument};
 
 pub mod boxcell;
@@ -26,11 +26,10 @@ enum TextOption {
     STRING,
 }
 
-#[neon::export(name = "newSchema")]
-fn new_schema<'cx>(
-    cx: &mut FunctionContext<'cx>,
+#[neon::export]
+fn new_schema(
     Json(descriptor): Json<OrderMap<String, Vec<TextOption>>>,
-) -> JsResult<'cx, JsBox<BoxCell<Schema>>> {
+) -> Boxed<BoxCell<Schema>> {
     let mut builder = Schema::builder();
     for (field_name, options) in descriptor.iter() {
         builder.add_text_field(field_name, options.iter().fold(TextOptions::default(), |acc, option| {
@@ -41,41 +40,35 @@ fn new_schema<'cx>(
             }
         }));
     }
-    Ok(cx.boxed(BoxCell::new(builder.build())))
+    Boxed(BoxCell::new(builder.build()))
 }
 
-#[neon::export(name = "commit")]
-fn commit<'cx>(
-    cx: &mut FunctionContext<'cx>,
-    index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
-) -> Handle<'cx, JsPromise>{
-    let index = index.as_ref();
-    let writer: Arc<Mutex<IndexWriter>> = index.writer.clone();
-    cx.task(move || {
-        writer.lock().unwrap().commit().unwrap();
-    }).promise(move |mut cx, ()| { Ok(cx.undefined()) })
+#[neon::export(task)]
+fn commit(
+    Boxed(index): Boxed<BoxArc<OpenIndex>>,
+) -> Result<(), Error> {
+    index.writer.lock().map_err(|_| "mutex poisoned")?.commit()?;
+    Ok(())
 }
 
-#[neon::export(name = "commitSync")]
-fn commit_sync<'cx>(
-    index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
-) {
-    let index = index.as_ref();
-    index.writer.lock().unwrap().commit().unwrap();
+#[neon::export]
+fn commit_sync(
+    index: Boxed<BoxArc<OpenIndex>>,
+) -> Result<(), Error> {
+    commit(index)
 }
 
-#[neon::export(name = "newSearcher")]
-fn new_searcher<'cx>(
-    cx: &mut FunctionContext<'cx>,
-    index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
-) -> JsResult<'cx, JsBox<BoxArc<Searcher>>> {
-    Ok(cx.boxed(BoxArc::new(index.as_ref().reader.lock().unwrap().searcher())))
+#[neon::export]
+fn new_searcher(
+    Boxed(index): Boxed<BoxArc<OpenIndex>>,
+) -> Result<Boxed<BoxArc<Searcher>>, Error> {
+    Ok(Boxed(BoxArc::new(index.reader.lock().map_err(|_| "mutex poisoned")?.searcher())))
 }
 
 struct OpenIndex {
     index: Index,
-    writer: Arc<Mutex<IndexWriter>>,
-    reader: Arc<Mutex<IndexReader>>,
+    writer: Mutex<IndexWriter>,
+    reader: Mutex<IndexReader>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -94,129 +87,92 @@ impl From<ReloadOnPolicy> for ReloadPolicy {
     }
 }
 
-#[neon::export(name = "newIndex")]
-fn new_index<'cx>(
-    cx: &mut FunctionContext<'cx>,
+#[neon::export]
+fn new_index(
     path: String,
     heap_size: f64,
-    schema: Handle<'cx, JsBox<BoxCell<Schema>>>,
+    Boxed(schema): Boxed<BoxCell<Schema>>,
     Json(reload_on): Json<ReloadOnPolicy>,
-) -> JsResult<'cx, JsBox<BoxCell<OpenIndex>>> {
+) -> Result<Boxed<BoxArc<OpenIndex>>, Error> {
     let dir_path = PathBuf::from(path);
-    let dir = tantivy::directory::MmapDirectory::open(dir_path).unwrap();
-    let index = Index::create(dir, schema.as_ref().clone(), IndexSettings::default()).unwrap();
-    let reader = Arc::new(Mutex::new(
+    let dir = tantivy::directory::MmapDirectory::open(dir_path)?;
+    let index = Index::create(dir, schema.as_ref().clone(), IndexSettings::default())?;
+    let reader = Mutex::new(
         index
             .reader_builder()
             .reload_policy(reload_on.into())
-            .try_into()
-            .unwrap()
-    ));
-    let heap_size: u53 = heap_size.project().unwrap();
+            .try_into()?
+    );
+    let heap_size: u53 = heap_size.project()?;
     let heap_size: u64 = heap_size.into();
-    let heap_size: usize = heap_size.try_into().unwrap();
-    let writer = Arc::new(Mutex::new(index.writer(heap_size).unwrap()));
-    Ok(cx.boxed(BoxCell::new(OpenIndex { index, writer, reader })))
+    let heap_size: usize = heap_size.try_into()?;
+    let writer = Mutex::new(index.writer(heap_size)?);
+    Ok(Boxed(BoxArc::new(OpenIndex { index, writer, reader })))
 }
 
-#[neon::export(name = "reload")]
-fn reload<'cx>(
-    cx: &mut FunctionContext<'cx>,
-    index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
-) -> Handle<'cx, JsPromise>{
-    let index = index.as_ref();
-    let reader: Arc<Mutex<IndexReader>> = index.reader.clone();
-    cx.task(move || {
-        reader.lock().unwrap().reload().unwrap();
-    }).promise(move |mut cx, ()| { Ok(cx.undefined()) })
+#[neon::export(task)]
+fn reload(
+    Boxed(index): Boxed<BoxArc<OpenIndex>>,
+) -> Result<(), Error> {
+    index.reader.lock().map_err(|_| "mutex poisoned")?.reload()?;
+    Ok(())
 }
 
-#[neon::export(name = "reloadSync")]
-fn reload_sync<'cx>(
-    index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
-) {
-    let index = index.as_ref();
-    index.reader.lock().unwrap().reload().unwrap();
+#[neon::export]
+fn reload_sync(
+    index: Boxed<BoxArc<OpenIndex>>
+) -> Result<(), Error> {
+    reload(index)
 }
 
-#[neon::export(name = "addDocument")]
+#[neon::export]
 fn add_document<'cx>(
     cx: &mut FunctionContext<'cx>,
-    index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
+    Boxed(index): Boxed<BoxArc<OpenIndex>>,
     document: String,
-) -> Handle<'cx, JsBigInt> {
-    let index = index.as_ref();
-    let td = TantivyDocument::parse_json(&index.index.schema(), &document).unwrap();
-    let stamp = index.writer.lock().unwrap().add_document(td).unwrap();
-    JsBigInt::from_u64(cx, stamp)
+) -> JsResult<'cx, JsBigInt> {
+    let td = TantivyDocument::parse_json(&index.index.schema(), &document)
+        .or_else(|err| cx.throw_error(err.to_string()))?;
+    let stamp = index.writer
+        .lock()
+        .or_else(|_| cx.throw_error("mutex poisoned"))?
+        .add_document(td)
+        .or_else(|err| cx.throw_error(err.to_string()))?;
+    Ok(JsBigInt::from_u64(cx, stamp))
 }
 
-#[neon::export(name = "topDocs")]
-fn top_docs<'cx>(
-    cx: &mut FunctionContext<'cx>,
-    searcher: Handle<'cx, JsBox<BoxArc<Searcher>>>,
+#[neon::export(task)]
+fn top_docs(
+    Boxed(searcher): Boxed<BoxArc<Searcher>>,
     query_str: String,
     Json(fields): Json<Vec<u32>>,
     limit: f64,
-) -> Handle<'cx, JsPromise>{
-    let fields = fields.iter().map(|id| Field::from_field_id(*id)).collect();
-    let task_searcher = BoxArc::clone(&searcher);
-    let promise_searcher = BoxArc::clone(&searcher);
-
-    cx
-        .task(move || {
-            let searcher = task_searcher.lock().unwrap();
-            let index = searcher.index();
-            let query_parser = QueryParser::for_index(index, fields);
-            let query = query_parser.parse_query(&query_str).unwrap();
-            let collector = TopDocs::with_limit(limit as usize);
-            searcher
-                .search(&query, &collector)
-                .unwrap()
-                .iter()
-                .map(|&(score, doc_address)| {
-                    (score, doc_address, query.explain(&searcher, doc_address).unwrap())
-                })
-                .collect::<Vec<_>>()
-        })
-        .promise(move |mut cx, top_docs| {
-            let searcher = promise_searcher.lock().unwrap();
-            let index = searcher.index();
-            let schema = index.schema();
-            let mut results: Vec<(Score, String, Explanation)> = vec![];
-
-            for (score, doc_address, explanation) in top_docs  {
-                let retrieved_doc: TantivyDocument = searcher.doc(doc_address).unwrap();
-                results.push((score, retrieved_doc.to_json(&schema), explanation));
-            }
-            Json(results).try_into_js(&mut cx)
-        })
-}
-
-#[neon::export(name = "topDocsSync")]
-fn top_docs_sync<'cx>(
-    searcher: Handle<'cx, JsBox<BoxArc<Searcher>>>,
-    query_str: String,
-    Json(fields): Json<Vec<u32>>,
-    limit: f64,
-) -> Json<Vec<(Score, String, Explanation)>> {
-    let searcher = searcher.lock().unwrap();
+) -> Json<Vec<(Score, String, Explanation)>>{
     let fields = fields.iter().map(|id| Field::from_field_id(*id)).collect();
     let index = searcher.index();
     let schema = index.schema();
     let query_parser = QueryParser::for_index(index, fields);
     let query = query_parser.parse_query(&query_str).unwrap();
     let collector = TopDocs::with_limit(limit as usize);
+    Json(
+        searcher
+            .search(&query, &collector)
+            .unwrap()
+            .iter()
+            .map(|&(score, doc_address)| {
+                let retrieved_doc: TantivyDocument = searcher.doc(doc_address).unwrap();
+                (score, retrieved_doc.to_json(&schema), query.explain(&searcher, doc_address).unwrap())
+            })
+            .collect::<Vec<_>>()
+    )
+}
 
-    let top_docs: Vec<(Score, DocAddress)> = searcher.search(&query, &collector).unwrap();
-
-    let mut results: Vec<(Score, String, Explanation)> = vec![];
-
-    for (score, doc_address) in top_docs  {
-        let retrieved_doc: TantivyDocument = searcher.doc(doc_address).unwrap();
-        let explanation = query.explain(&searcher, doc_address).unwrap();
-        results.push((score, retrieved_doc.to_json(&schema), explanation));
-    }
-
-    Json(results)
+#[neon::export]
+fn top_docs_sync<'cx>(
+    searcher: Boxed<BoxArc<Searcher>>,
+    query_str: String,
+    fields: Json<Vec<u32>>,
+    limit: f64,
+) -> Json<Vec<(Score, String, Explanation)>>{
+    top_docs(searcher, query_str, fields, limit)
 }

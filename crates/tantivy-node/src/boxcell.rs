@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use neon::prelude::Context;
 use neon::types::Finalize;
 
+#[derive(Clone)]
 pub struct BoxCell<T>(pub RefCell<T>);
 
 impl<T> Finalize for BoxCell<T> {
