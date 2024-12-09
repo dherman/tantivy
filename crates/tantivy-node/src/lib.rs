@@ -161,8 +161,8 @@ fn top_docs<'cx>(
     limit: f64,
 ) -> Handle<'cx, JsPromise>{
     let fields = fields.iter().map(|id| Field::from_field_id(*id)).collect();
-    let task_searcher = BoxArc::clone(&*searcher);
-    let promise_searcher = BoxArc::clone(&*searcher);
+    let task_searcher = BoxArc::clone(&searcher);
+    let promise_searcher = BoxArc::clone(&searcher);
 
     cx
         .task(move || {
