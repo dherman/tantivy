@@ -1,7 +1,8 @@
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use neon::{prelude::*, types::JsBigInt};
-use neon::types::extract::Json;
+use neon::types::extract::{Json, TryIntoJs};
 
 use ordermap::OrderMap;
 use serde::{Deserialize, Serialize};
@@ -11,8 +12,10 @@ use tantivy::{DocAddress, Document, IndexReader, ReloadPolicy, Score, Searcher};
 use tantivy::{schema::{Field, Schema, TextOptions}, Index, IndexSettings, IndexWriter, TantivyDocument};
 
 pub mod boxcell;
+pub mod boxarc;
 
 use boxcell::BoxCell;
+use boxarc::BoxArc;
 
 #[derive(Serialize, Deserialize, Debug)]
 enum TextOption {
@@ -40,28 +43,40 @@ fn new_schema<'cx>(
     Ok(cx.boxed(BoxCell::new(builder.build())))
 }
 
+#[neon::export(name = "commit")]
+fn commit<'cx>(
+    cx: &mut FunctionContext<'cx>,
+    index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
+) -> Handle<'cx, JsPromise>{
+    let index = index.as_ref();
+    let writer: Arc<Mutex<IndexWriter>> = index.writer.clone();
+    cx.task(move || {
+        writer.lock().unwrap().commit().unwrap();
+    }).promise(move |mut cx, ()| { Ok(cx.undefined()) })
+}
+
 #[neon::export(name = "commitSync")]
 fn commit_sync<'cx>(
     // TODO: can I leave this out even though we need the lifetime for the handle?
     _cx: &mut FunctionContext<'cx>,
     index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
 ) {
-    let mut index = index.as_mut();
-    index.writer.commit().unwrap();
+    let index = index.as_ref();
+    index.writer.lock().unwrap().commit().unwrap();
 }
 
 #[neon::export(name = "newSearcher")]
 fn new_searcher<'cx>(
     cx: &mut FunctionContext<'cx>,
     index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
-) -> JsResult<'cx, JsBox<BoxCell<Searcher>>> {
-    Ok(cx.boxed(BoxCell::new(index.as_ref().reader.searcher())))
+) -> JsResult<'cx, JsBox<BoxArc<Searcher>>> {
+    Ok(cx.boxed(BoxArc::new(index.as_ref().reader.lock().unwrap().searcher())))
 }
 
 struct OpenIndex {
     index: Index,
-    writer: IndexWriter,
-    reader: IndexReader,
+    writer: Arc<Mutex<IndexWriter>>,
+    reader: Arc<Mutex<IndexReader>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -91,15 +106,29 @@ fn new_index<'cx>(
     let dir_path = PathBuf::from(path);
     let dir = tantivy::directory::MmapDirectory::open(dir_path).unwrap();
     let index = Index::create(dir, schema.as_ref().clone(), IndexSettings::default()).unwrap();
-    let reader = index
-        .reader_builder()
-        .reload_policy(reload_on.into())
-        // TODO: can probably just use .into()
-        .try_into()
-        .unwrap();
+    let reader = Arc::new(Mutex::new(
+        index
+            .reader_builder()
+            .reload_policy(reload_on.into())
+            // TODO: can probably just use .into()
+            .try_into()
+            .unwrap()
+    ));
     // TODO: replace `as` with safer cast
-    let writer = index.writer(heap_size as usize).unwrap();
+    let writer = Arc::new(Mutex::new(index.writer(heap_size as usize).unwrap()));
     Ok(cx.boxed(BoxCell::new(OpenIndex { index, writer, reader })))
+}
+
+#[neon::export(name = "reload")]
+fn reload<'cx>(
+    cx: &mut FunctionContext<'cx>,
+    index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
+) -> Handle<'cx, JsPromise>{
+    let index = index.as_ref();
+    let reader: Arc<Mutex<IndexReader>> = index.reader.clone();
+    cx.task(move || {
+        reader.lock().unwrap().reload().unwrap();
+    }).promise(move |mut cx, ()| { Ok(cx.undefined()) })
 }
 
 #[neon::export(name = "reloadSync")]
@@ -108,7 +137,7 @@ fn reload_sync<'cx>(
     index: Handle<'cx, JsBox<BoxCell<OpenIndex>>>,
 ) {
     let index = index.as_ref();
-    index.reader.reload().unwrap();
+    index.reader.lock().unwrap().reload().unwrap();
 }
 
 #[neon::export(name = "addDocument")]
@@ -119,19 +148,57 @@ fn add_document<'cx>(
 ) -> Handle<'cx, JsBigInt> {
     let index = index.as_ref();
     let td = TantivyDocument::parse_json(&index.index.schema(), &document).unwrap();
-    let stamp = index.writer.add_document(td).unwrap();
+    let stamp = index.writer.lock().unwrap().add_document(td).unwrap();
     JsBigInt::from_u64(cx, stamp)
 }
+
+#[neon::export(name = "topDocs")]
+fn top_docs<'cx>(
+    cx: &mut FunctionContext<'cx>,
+    searcher: Handle<'cx, JsBox<BoxArc<Searcher>>>,
+    query_str: String,
+    Json(fields): Json<Vec<u32>>,
+    limit: f64,
+) -> Handle<'cx, JsPromise>{
+    let fields = fields.iter().map(|id| Field::from_field_id(*id)).collect();
+    let task_searcher = BoxArc::clone(&*searcher);
+    let promise_searcher = BoxArc::clone(&*searcher);
+
+    cx
+        .task(move || {
+            let searcher = task_searcher.lock().unwrap();
+            let index = searcher.index();
+            let query_parser = QueryParser::for_index(index, fields);
+            let query = query_parser.parse_query(&query_str).unwrap();
+            let collector = TopDocs::with_limit(limit as usize);
+            searcher.search(&query, &collector).unwrap()
+        })
+        .promise(move |mut cx, top_docs| {
+            let searcher = promise_searcher.lock().unwrap();
+            let index = searcher.index();
+            let schema = index.schema();
+            let mut results: Vec<(Score, String)> = vec![];
+
+            for (score, doc_address) in top_docs  {
+                let retrieved_doc: TantivyDocument = searcher.doc(doc_address).unwrap();
+
+                // TODO: is a TantivyDocument already serializable?
+                results.push((score, retrieved_doc.to_json(&schema)));
+            }
+            Json(results).try_into_js(&mut cx)
+        })
+}
+
 
 #[neon::export(name = "topDocsSync")]
 fn top_docs_sync<'cx>(
     _cx: &mut FunctionContext<'cx>,
-    searcher: Handle<'cx, JsBox<BoxCell<Searcher>>>,
+    searcher: Handle<'cx, JsBox<BoxArc<Searcher>>>,
     query_str: String,
     Json(fields): Json<Vec<u32>>,
     limit: f64,
 ) -> Json<Vec<(Score, String)>> {
-    let searcher = searcher.as_ref();
+    let searcher = searcher.lock().unwrap();
     let fields = fields.iter().map(|id| Field::from_field_id(*id)).collect();
     let index = searcher.index();
     let schema = index.schema();
@@ -153,6 +220,4 @@ fn top_docs_sync<'cx>(
     Json(results)
 }
 
-// TODO: async commit()
-// TODO: async reload()
 // TODO: async search()

@@ -15,9 +15,12 @@ declare module "./load.cjs" {
   function newSchema(schema: SchemaDescriptor): BoxedSchema;
   function newIndex(path: string, heapSize: number, schema: BoxedSchema, reload_on: string): BoxedIndex;
   function addDocument(index: BoxedIndex, doc: string): BigInt;
+  function commit(index: BoxedIndex): Promise<void>;
   function commitSync(index: BoxedIndex): void;
+  function reload(index: BoxedIndex): Promise<void>;
   function reloadSync(index: BoxedIndex): void;
   function newSearcher(index: BoxedIndex): BoxedSearcher;
+  function topDocs(searcher: BoxedSearcher, query: string, fields: number[], limit: number): Promise<SearchResult[]>;
   function topDocsSync(searcher: BoxedSearcher, query: string, fields: number[], limit: number): SearchResult[];
 }
 
@@ -88,6 +91,14 @@ export class Index {
     return addon.addDocument(this[_BOXED_INDEX], JSON.stringify(doc));
   }
 
+  async commit(): Promise<void> {
+    await addon.commit(this[_BOXED_INDEX]);
+  }
+
+  async reload(): Promise<void> {
+    await addon.reload(this[_BOXED_INDEX]);
+  }
+
   commitSync(): void {
     addon.commitSync(this[_BOXED_INDEX]);
   }
@@ -131,6 +142,18 @@ export class Searcher {
       throw new Error("only top search is implemented");
     }
     return addon.topDocsSync(
+      this[_BOXED_SEARCHER],
+      query,
+      this.interpretFields(options.fields),
+      options.top
+    );
+  }
+
+  async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
+    if (!options.top) {
+      throw new Error("only top search is implemented");
+    }
+    return await addon.topDocs(
       this[_BOXED_SEARCHER],
       query,
       this.interpretFields(options.fields),
