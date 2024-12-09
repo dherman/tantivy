@@ -45,7 +45,7 @@ async function test() {
 
 test()
   .then(result => {
-    console.log(result);
+    console.log(JSON.stringify(result, 0, 2));
   })
   .catch(error => {
     console.error(error);

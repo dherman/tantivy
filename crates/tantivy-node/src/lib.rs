@@ -4,15 +4,17 @@ use std::sync::{Arc, Mutex};
 use neon::{prelude::*, types::JsBigInt};
 use neon::types::extract::{Json, TryIntoJs};
 
+use num::{u53, Project};
 use ordermap::OrderMap;
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
+use tantivy::query::{Explanation, QueryParser};
 use tantivy::{DocAddress, Document, IndexReader, ReloadPolicy, Score, Searcher};
 use tantivy::{schema::{Field, Schema, TextOptions}, Index, IndexSettings, IndexWriter, TantivyDocument};
 
 pub mod boxcell;
 pub mod boxarc;
+pub mod num;
 
 use boxcell::BoxCell;
 use boxarc::BoxArc;
@@ -27,7 +29,6 @@ enum TextOption {
 #[neon::export(name = "newSchema")]
 fn new_schema<'cx>(
     cx: &mut FunctionContext<'cx>,
-    // TODO: TextOptions is already serializable, can we use it directly?
     Json(descriptor): Json<OrderMap<String, Vec<TextOption>>>,
 ) -> JsResult<'cx, JsBox<BoxCell<Schema>>> {
     let mut builder = Schema::builder();
@@ -108,12 +109,13 @@ fn new_index<'cx>(
         index
             .reader_builder()
             .reload_policy(reload_on.into())
-            // TODO: can probably just use .into()
             .try_into()
             .unwrap()
     ));
-    // TODO: replace `as` with safer cast
-    let writer = Arc::new(Mutex::new(index.writer(heap_size as usize).unwrap()));
+    let heap_size: u53 = heap_size.project().unwrap();
+    let heap_size: u64 = heap_size.into();
+    let heap_size: usize = heap_size.try_into().unwrap();
+    let writer = Arc::new(Mutex::new(index.writer(heap_size).unwrap()));
     Ok(cx.boxed(BoxCell::new(OpenIndex { index, writer, reader })))
 }
 
@@ -168,19 +170,24 @@ fn top_docs<'cx>(
             let query_parser = QueryParser::for_index(index, fields);
             let query = query_parser.parse_query(&query_str).unwrap();
             let collector = TopDocs::with_limit(limit as usize);
-            searcher.search(&query, &collector).unwrap()
+            searcher
+                .search(&query, &collector)
+                .unwrap()
+                .iter()
+                .map(|&(score, doc_address)| {
+                    (score, doc_address, query.explain(&searcher, doc_address).unwrap())
+                })
+                .collect::<Vec<_>>()
         })
         .promise(move |mut cx, top_docs| {
             let searcher = promise_searcher.lock().unwrap();
             let index = searcher.index();
             let schema = index.schema();
-            let mut results: Vec<(Score, String)> = vec![];
+            let mut results: Vec<(Score, String, Explanation)> = vec![];
 
-            for (score, doc_address) in top_docs  {
+            for (score, doc_address, explanation) in top_docs  {
                 let retrieved_doc: TantivyDocument = searcher.doc(doc_address).unwrap();
-
-                // TODO: is a TantivyDocument already serializable?
-                results.push((score, retrieved_doc.to_json(&schema)));
+                results.push((score, retrieved_doc.to_json(&schema), explanation));
             }
             Json(results).try_into_js(&mut cx)
         })
@@ -192,7 +199,7 @@ fn top_docs_sync<'cx>(
     query_str: String,
     Json(fields): Json<Vec<u32>>,
     limit: f64,
-) -> Json<Vec<(Score, String)>> {
+) -> Json<Vec<(Score, String, Explanation)>> {
     let searcher = searcher.lock().unwrap();
     let fields = fields.iter().map(|id| Field::from_field_id(*id)).collect();
     let index = searcher.index();
@@ -203,13 +210,12 @@ fn top_docs_sync<'cx>(
 
     let top_docs: Vec<(Score, DocAddress)> = searcher.search(&query, &collector).unwrap();
 
-    let mut results: Vec<(Score, String)> = vec![];
+    let mut results: Vec<(Score, String, Explanation)> = vec![];
 
     for (score, doc_address) in top_docs  {
         let retrieved_doc: TantivyDocument = searcher.doc(doc_address).unwrap();
-
-        // TODO: is a TantivyDocument already serializable?
-        results.push((score, retrieved_doc.to_json(&schema)));
+        let explanation = query.explain(&searcher, doc_address).unwrap();
+        results.push((score, retrieved_doc.to_json(&schema), explanation));
     }
 
     Json(results)
