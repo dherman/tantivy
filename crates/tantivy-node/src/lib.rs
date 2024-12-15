@@ -9,6 +9,7 @@ use ordermap::OrderMap;
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::query::{Explanation, QueryParser};
+use tantivy::schema::{NumericOptions, SchemaBuilder};
 use tantivy::{Document, IndexReader, ReloadPolicy, Score, Searcher};
 use tantivy::{schema::{Field, Schema, TextOptions}, Index, IndexSettings, IndexWriter, TantivyDocument};
 
@@ -20,25 +21,76 @@ use boxcell::BoxCell;
 use boxarc::BoxArc;
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum FieldDescriptor {
+    Text { flags: Option<Vec<TextOption>> },
+    String { flags: Option<Vec<TextOption>> },
+    F64 { flags: Option<Vec<NumericOption>> },
+    // TODO: | F64FieldDescriptor
+    // TODO: | I64FieldDescriptor
+    // TODO: | U64FieldDescriptor
+    // TODO: | DateFieldDescriptor
+    // TODO: | BoolFieldDescriptor
+    // TODO: | IpAddrFieldDescriptor
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 enum TextOption {
-    TEXT,
     STORED,
-    STRING,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+enum NumericOption {
+    STORED,
+    INDEXED,
+}
+
+fn add_field(builder: &mut SchemaBuilder, name: &str, options: &FieldDescriptor) {
+    match options {
+        FieldDescriptor::Text { flags } => {
+            let mut options = TextOptions::default() | tantivy::schema::TEXT;
+            if let Some(flags) = flags {
+                for flag in flags {
+                    options = match flag {
+                        TextOption::STORED => options | tantivy::schema::STORED,
+                    };
+                }
+            }
+            builder.add_text_field(name, options);
+        }
+        FieldDescriptor::String { flags } => {
+            let mut options = TextOptions::default() | tantivy::schema::STRING;
+            if let Some(flags) = flags {
+                for flag in flags {
+                    options = match flag {
+                        TextOption::STORED => options | tantivy::schema::STORED,
+                    };
+                }
+            }
+            builder.add_text_field(name, options);
+        }
+        FieldDescriptor::F64 { flags } => {
+            let mut options = NumericOptions::default();
+            if let Some(flags) = flags {
+                for flag in flags {
+                    options = match flag {
+                        NumericOption::STORED => options | tantivy::schema::STORED,
+                        NumericOption::INDEXED => options | tantivy::schema::INDEXED,
+                    };
+                }
+            }
+            builder.add_f64_field(name, options);
+        }
+    }
 }
 
 #[neon::export]
 fn new_schema(
-    Json(descriptor): Json<OrderMap<String, Vec<TextOption>>>,
+    Json(descriptor): Json<OrderMap<String, FieldDescriptor>>,
 ) -> Boxed<BoxCell<Schema>> {
     let mut builder = Schema::builder();
     for (field_name, options) in descriptor.iter() {
-        builder.add_text_field(field_name, options.iter().fold(TextOptions::default(), |acc, option| {
-            match option {
-                TextOption::TEXT => acc | tantivy::schema::TEXT,
-                TextOption::STORED => acc | tantivy::schema::STORED,
-                TextOption::STRING => acc | tantivy::schema::STRING,
-            }
-        }));
+        add_field(&mut builder, field_name, options);
     }
     Boxed(BoxCell::new(builder.build()))
 }

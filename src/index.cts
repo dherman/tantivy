@@ -24,12 +24,38 @@ declare module "./load.cjs" {
   function topDocsSync(searcher: BoxedSearcher, query: string, fields: number[], limit: number): SearchResult[];
 }
 
-export type TextOption = 'TEXT' | 'STORED' | 'STRING';
-export type TextOptions = TextOption[];
+export type TextFieldDescriptor = {
+  type: "text",
+  flags?: TextOption[],
+};
+
+export type StringFieldDescriptor = {
+  type: "string",
+  flags?: TextOption[],
+};
+
+export type F64FieldDescriptor = {
+  type: "f64",
+  flags?: NumericOption[],
+};
+
+// TODO: | I64FieldDescriptor
+// TODO: | U64FieldDescriptor
+// TODO: | DateFieldDescriptor
+// TODO: | BoolFieldDescriptor
+// TODO: | IpAddrFieldDescriptor
+export type FieldDescriptor =
+  TextFieldDescriptor
+  | StringFieldDescriptor
+  | F64FieldDescriptor;
+
+export type TextOption = 'STORED';
+export type NumericOption = 'STORED' | 'INDEXED';
+
 export type Field = number;
 
 export type SchemaDescriptor = {
-  [key: string]: TextOptions
+  [key: string]: FieldDescriptor
 };
 
 export type FieldMap = {

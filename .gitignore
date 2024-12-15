@@ -6,4 +6,4 @@ npm-debug.log*
 lib
 cargo.log
 cross.log
-data
+.test-index
