@@ -10,4 +10,15 @@ function getTestIndexPath() {
   return INDEX_PATH;
 }
 
+async function benchmark(thunk) {
+  const start = performance.now();
+  const result = await thunk();
+  const end = performance.now();
+  return {
+    result,
+    time: end - start
+  };
+}
+
 module.exports.getTestIndexPath = getTestIndexPath;
+module.exports.benchmark = benchmark;

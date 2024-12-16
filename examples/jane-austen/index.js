@@ -1,6 +1,6 @@
 const fs = require('fs/promises');
 const { SchemaBuilder, Index, IndexWriter, Schema, Search, QueryParser, TopDocs } = require('../..');
-const { getTestIndexPath } = require('../utils');
+const { getTestIndexPath, benchmark } = require('../utils');
 
 const INDEX_PATH = getTestIndexPath();
 const DATA_PATH = `${__dirname}/data`;
@@ -52,15 +52,21 @@ async function buildIndex() {
 async function test() {
   const index = await buildIndex();
   const searcher = index.searcher();
-  return await searcher.search("love", {
-    fields: ["text"],
-    top: 10
+  return benchmark(async () => {
+    return await searcher.search("love", {
+      fields: ["text"],
+      top: 10
+    });
   });
 }
 
 test()
   .then(result => {
-    console.log(JSON.stringify(result, 0, 2));
+    const summary = result.result.map(([score, doc, _explanation]) => {
+      return { score, doc: JSON.parse(doc) };
+    });
+    console.log(JSON.stringify(summary, 0, 2));
+    console.error(`Search time: ${result.time}ms`);
   })
   .catch(error => {
     console.error(error);
