@@ -3,6 +3,8 @@ const { SchemaBuilder, Index, IndexWriter, Schema, Search, QueryParser, TopDocs 
 const { getTestIndexPath } = require('../utils');
 
 const INDEX_PATH = getTestIndexPath();
+const DATA_PATH = `${__dirname}/data`;
+
 const BOOKS = [
   'emma',
   'lady-susan',
@@ -13,7 +15,7 @@ const BOOKS = [
   'sense-and-sensibility'
 ];
 
-async function test() {
+async function buildIndex() {
   const schema = new Schema({
     "_id": { type: "f64" },
     "title": { type: "text", flags: ["STORED"] },
@@ -35,7 +37,7 @@ async function test() {
 
   // TODO: try this concurrently
   for (const book of BOOKS) {
-    const paragraphs = JSON.parse(await fs.readFile(`./data/${book}.json`, 'utf8'));
+    const paragraphs = JSON.parse(await fs.readFile(`${DATA_PATH}/${book}.json`, 'utf8'));
     for (const paragraph of paragraphs) {
       await index.addDocument(paragraph);
     }
@@ -47,9 +49,18 @@ async function test() {
   return index;
 }
 
+async function test() {
+  const index = await buildIndex();
+  const searcher = index.searcher();
+  return await searcher.search("love", {
+    fields: ["text"],
+    top: 10
+  });
+}
+
 test()
-  .then(index => {
-    console.log(index);
+  .then(result => {
+    console.log(JSON.stringify(result, 0, 2));
   })
   .catch(error => {
     console.error(error);
