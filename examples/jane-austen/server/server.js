@@ -25,7 +25,6 @@ buildIndex()
       }).then(results => {
         const items = results.map(([score, docSrc, _explanation]) => {
           const doc = JSON.parse(docSrc);
-          console.error(docSrc);
           doc.query = req.query.q;
           doc.author = doc.author[0];
           doc.volume = (doc.volume && doc.volume.length) ? doc.volume[0] : null;
@@ -49,21 +48,3 @@ buildIndex()
       console.log(`Server running on port ${PORT}`);
     });
   });
-
-/*
-// Root route
-app.get('/', (req, res) => {
-  res.json({
-    items: [{
-      login: "dherman",
-      avatar_url: "https://avatars.githubusercontent.com/u/307871?v=4",
-    }],
-  });
-});
-
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-*/
