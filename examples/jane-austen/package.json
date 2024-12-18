@@ -1,0 +1,13 @@
+{
+  "name": "jane-austen",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Example using Tantivy to index Jane Austen's novels",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "concurrently \"cd server && npm run dev\" \"cd client && npm run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

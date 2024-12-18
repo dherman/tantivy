@@ -1,0 +1,40 @@
+body, html {
+  height: 100%;
+  margin: 0;
+  background-color: #f4f4f4;
+}
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.container {
+  display: flex;
+  justify-content: center;
+  align-items: top;
+  height: 80vh;
+}
+
+.search-container {
+  width: 100%;
+  width: 800px;
+  padding: 2rem;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.container blockquote {
+  background-color: #faf0bf;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  text-align: left;
+  max-width: 100%;
+  padding: 1rem;
+  border-radius: 5px;
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
