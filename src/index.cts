@@ -9,6 +9,7 @@ declare module "./load.cjs" {
   interface BoxedSchema {}
   interface BoxedIndex {}
   interface BoxedSearcher {}
+  interface BoxedQuery {}
 
   type SearchResult = [number, string];
 
@@ -19,9 +20,13 @@ declare module "./load.cjs" {
   function commitSync(index: BoxedIndex): void;
   function reload(index: BoxedIndex): Promise<void>;
   function reloadSync(index: BoxedIndex): void;
+  function parseQuery(searcher: BoxedSearcher, source: string, fields: number[]): BoxedQuery;
   function newSearcher(index: BoxedIndex): BoxedSearcher;
-  function topDocs(searcher: BoxedSearcher, query: string, fields: number[], limit: number): Promise<SearchResult[]>;
-  function topDocsSync(searcher: BoxedSearcher, query: string, fields: number[], limit: number): SearchResult[];
+  function newRegexQuery(pattern: string, field: number): BoxedQuery;
+  function newPhrasePrefixQuery(terms: string[], field: number): BoxedQuery;
+  function newFuzzyTermQuery(term: string, field: number, maxDistance: number, transpositionCostsOne: boolean, isPrefix: boolean): BoxedQuery;
+  function topDocs(searcher: BoxedSearcher, query: BoxedQuery, limit: number): Promise<SearchResult[]>;
+  function topDocsSync(searcher: BoxedSearcher, query: BoxedQuery, limit: number): SearchResult[];
 }
 
 export type TextFieldDescriptor = {
@@ -93,6 +98,16 @@ export type CreateIndexOptions = {
   reloadOn?: ReloadPolicy,
 }
 
+const _BOXED_QUERY: unique symbol = Symbol();
+
+export class Query {
+  [_BOXED_QUERY]: addon.BoxedQuery;
+
+  constructor(boxedQuery: addon.BoxedQuery) {
+    this[_BOXED_QUERY] = boxedQuery;
+  }
+}
+
 const _BOXED_INDEX: unique symbol = Symbol();
 
 export class Index {
@@ -147,6 +162,12 @@ export type SearchResult = addon.SearchResult;
 
 const _BOXED_SEARCHER: unique symbol = Symbol();
 
+export type FuzzyTermQueryOptions = {
+  maxDistance?: number,
+  transpositionCostsOne?: boolean,
+  isPrefix?: boolean,
+};
+
 export class Searcher {
   private _index: Index;
   [_BOXED_SEARCHER]: addon.BoxedSearcher;
@@ -156,6 +177,10 @@ export class Searcher {
     this[_BOXED_SEARCHER] = boxedSearcher;
   }
 
+  private interpretField(field: string | number): number {
+    return typeof field === 'string' ? this._index.schema().fields[field] : field;
+  }
+
   private interpretFields(fields: (string | number)[]): number[] {
     const fieldsMap = this._index.schema().fields;
     return fields.map(field => {
@@ -163,26 +188,47 @@ export class Searcher {
     });
   }
 
-  searchSync(query: string, options: SearchOptions): SearchResult[] {
+  fuzzyTermQuery(term: string, field: string, options: FuzzyTermQueryOptions = {}): Query {
+    const maxDistance = options.maxDistance || 0;
+    const transpositionCostsOne = (typeof options.transpositionCostsOne === 'boolean') ? options.transpositionCostsOne : true;
+    const isPrefix = (typeof options.isPrefix === 'boolean') ? options.isPrefix : false;
+    return new Query(addon.newFuzzyTermQuery(term, this.interpretField(field), maxDistance, transpositionCostsOne, isPrefix));
+  }
+
+  regexpQuery(pattern: string, field: string): Query {
+    return new Query(addon.newRegexQuery(pattern, this.interpretField(field)));
+  }
+
+  phrasePrefixQuery(terms: string[], field: string): Query {
+    return new Query(addon.newPhrasePrefixQuery(terms, this.interpretField(field)));
+  }
+
+  searchSync(query: string | Query, options: SearchOptions): SearchResult[] {
     if (!options.top) {
       throw new Error("only top search is implemented");
     }
+    if (typeof query === 'string') {
+      const fields = this.interpretFields(options.fields);
+      query = new Query(addon.parseQuery(this[_BOXED_SEARCHER], query, fields));
+    }
     return addon.topDocsSync(
       this[_BOXED_SEARCHER],
-      query,
-      this.interpretFields(options.fields),
+      query[_BOXED_QUERY],
       options.top
     );
   }
 
-  async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
+  async search(query: string | Query, options: SearchOptions): Promise<SearchResult[]> {
     if (!options.top) {
       throw new Error("only top search is implemented");
     }
-    return await addon.topDocs(
+    if (typeof query === 'string') {
+      const fields = this.interpretFields(options.fields);
+      query = new Query(addon.parseQuery(this[_BOXED_SEARCHER], query, fields));
+    }
+    return addon.topDocs(
       this[_BOXED_SEARCHER],
-      query,
-      this.interpretFields(options.fields),
+      query[_BOXED_QUERY],
       options.top
     );
   }

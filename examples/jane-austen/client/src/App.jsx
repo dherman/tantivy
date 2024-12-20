@@ -73,7 +73,7 @@ function App() {
                     width: '50px',
                   }}
                 />
-                <span><>{highlight(option.clip, option.query)}</></span>
+                <span><>{highlight(option.text, option.query)}</></span>
               </>
             )}
           />
