@@ -1,13 +1,15 @@
 const { rmSync, mkdirSync, existsSync } = require('fs');
+const path = require('path');
 
-const INDEX_PATH = `${__dirname}/../.test-index`;
+const INDEX_PATH = path.join(__dirname, '..', '.test-index');
 
-function getTestIndexPath() {
-  if (existsSync(INDEX_PATH)) {
-    rmSync(INDEX_PATH, { recursive: true });
+function getTestIndexPath(indexName = "test") {
+  const indexPath = path.join(INDEX_PATH, indexName);
+  if (existsSync(indexPath)) {
+    rmSync(indexPath, { recursive: true });
   }
-  mkdirSync(INDEX_PATH);
-  return INDEX_PATH;
+  mkdirSync(indexPath, { recursive: true });
+  return indexPath;
 }
 
 async function benchmark(thunk) {

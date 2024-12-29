@@ -18,6 +18,29 @@ body, html {
   height: 80vh;
 }
 
+.container .timings {
+  height: 4.2em;
+  background-color: rgb(234, 217, 235);
+  border-radius: 5px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  padding: 0.5em 2em;
+  margin-right: 2rem;
+  font-size: 0.75rem;
+}
+
+.container .timings .label {
+  font-weight: bold;
+  font-variant: small-caps;
+  color: #444;
+  text-align: right;
+}
+
+.container .timings .value {
+  padding-left: 1em;
+  width: 5em;
+  text-align: right;
+}
+
 .search-container {
   width: 100%;
   width: 800px;
@@ -33,8 +56,39 @@ body, html {
   text-align: left;
   max-width: 100%;
   padding: 1rem;
-  border-radius: 5px;
+  border-radius: 10px;
   margin-bottom: 1rem;
   font-size: 1.25rem;
   line-height: 1.5;
+}
+
+.search-result-attribution {
+  text-align: left;
+  margin-left: 4em;
+}
+
+.search-result-attribution:before {
+  content: "– ";
+}
+
+.search-result-attribution a {
+  text-decoration-style: dotted;
+}
+
+.results-container {
+  margin-top: 1rem;
+  max-height: 55vh;
+  overflow-y: scroll;
+}
+
+.search-highlight {
+  background-color: #ffff00;
+  font-weight: bold;
+}
+
+.search-thumbnail {
+  height: 75px;
+  margin-left: 1em;
+  width: 50px;
+  float: right;
 }
