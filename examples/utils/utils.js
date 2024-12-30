@@ -1,9 +1,9 @@
-const { rmSync, mkdirSync, existsSync } = require('fs');
-const path = require('path');
+import { rmSync, mkdirSync, existsSync } from 'fs';
+import * as path from 'path';
 
-const INDEX_PATH = path.join(__dirname, '..', '.test-index');
+const INDEX_PATH = path.join(import.meta.dirname, '..', '..', '.test-index');
 
-function getTestIndexPath(indexName = "test") {
+export function getTestIndexPath(indexName = "test") {
   const indexPath = path.join(INDEX_PATH, indexName);
   if (existsSync(indexPath)) {
     rmSync(indexPath, { recursive: true });
@@ -12,7 +12,7 @@ function getTestIndexPath(indexName = "test") {
   return indexPath;
 }
 
-async function benchmark(thunk) {
+export async function benchmark(thunk) {
   const start = performance.now();
   const result = await thunk();
   const end = performance.now();
@@ -21,6 +21,3 @@ async function benchmark(thunk) {
     time: end - start
   };
 }
-
-module.exports.getTestIndexPath = getTestIndexPath;
-module.exports.benchmark = benchmark;

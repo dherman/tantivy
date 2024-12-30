@@ -1,4 +1,4 @@
-function splitSentences(text) {
+export function splitSentences(text) {
   return text
     // Normalize newlines
     .replaceAll('\r\n', '\n')
@@ -15,7 +15,7 @@ function splitSentences(text) {
     .filter(sentence => sentence.length);
 }
 
-function tokenizeSentence(sentence) {
+export function tokenizeSentence(sentence) {
   return sentence
     // Remove ASCII italics markup
     .replaceAll(/_/g, '')
@@ -29,7 +29,7 @@ function tokenizeSentence(sentence) {
     .filter(word => word.length);
 }
 
-function ngrams(tokens, minLength, maxLength) {
+export function ngrams(tokens, minLength, maxLength) {
   const result = [];
   for (let i = minLength; i <= maxLength; i++) {
     for (let j = 0; j < tokens.length - i + 1; j++) {
@@ -37,10 +37,4 @@ function ngrams(tokens, minLength, maxLength) {
     }
   }
   return result;
-}
-
-module.exports = {
-  splitSentences,
-  tokenizeSentence,
-  ngrams
 }

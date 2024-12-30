@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
-const { splitSentences, tokenizeSentence, ngrams } = require('./tokenize.js');
+import * as fs from 'fs';
+import * as path from 'path';
+import { splitSentences, tokenizeSentence, ngrams } from './tokenize.js';
 
 function die(error = null) {
   console.error(`

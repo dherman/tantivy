@@ -1,0 +1,16 @@
+{
+  "name": "shared",
+  "private": true,
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "exports": {
+    ".": "./shared.js",
+    "./build": "./build.js",
+    "./tokenize": "./tokenize.js"
+  },
+  "dependencies": {
+    "tantivy": "../../..",
+    "utils": "../../utils"
+  }
+}

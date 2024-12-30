@@ -1,0 +1,15 @@
+{
+  "name": "simple",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Example using Tantivy to index simple text",
+  "type": "module",
+  "exports": "./simple.js",
+  "scripts": {
+    "test": "node simple.js"
+  },
+  "dependencies": {
+    "utils": "../utils",
+    "tantivy": "../.."
+  }
+}

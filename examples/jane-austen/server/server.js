@@ -1,7 +1,6 @@
-const express = require('express');
-const path = require('path');
-const cors = require('cors');
-const { buildParagraphIndex, buildPhraseIndex } = require('../shared/build.js');
+import express from 'express';
+import cors from 'cors';
+import { buildParagraphIndex, buildPhraseIndex } from 'shared/build';
 
 const CORS_OPTIONS = {
   origin: ["http://localhost:5173"],

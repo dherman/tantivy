@@ -1,5 +1,5 @@
-const { buildParagraphIndex, buildPhraseIndex } = require('./shared/build.js');
-const { benchmark } = require('../utils.js');
+import { buildParagraphIndex, buildPhraseIndex } from './shared/build.js';
+import { benchmark } from 'utils';
 
 async function test() {
   console.error("Building paragraph index...");

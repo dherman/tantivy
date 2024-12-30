@@ -3,6 +3,7 @@ import { AsyncTypeahead } from 'react-bootstrap-typeahead';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import 'react-bootstrap-typeahead/css/Typeahead.css';
+//import { tokenizeSentence } from 'shared/tokenize'
 
 const SEARCH_URI = 'http://localhost:5174/search/';
 const TYPEAHEAD_URI = 'http://localhost:5174/typeahead/';
@@ -78,6 +79,9 @@ function App() {
     setIsLoading(true);
     setSearchResults([]);
     setTypeaheadTime(null);
+
+    // const tokens = tokenizeSentence(query);
+    // console.error(`Tokens: ${JSON.stringify(tokens)}`);
 
     fetch(`${TYPEAHEAD_URI}?q=${encodeURI(query)}`)
       .then((resp) => resp.json())

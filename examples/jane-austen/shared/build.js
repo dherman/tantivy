@@ -1,6 +1,6 @@
-const fs = require('fs/promises');
-const { SchemaBuilder, Index, IndexWriter, Schema, Search, QueryParser, TopDocs } = require('../../..');
-const { getTestIndexPath } = require('../../utils');
+import * as fs from 'fs/promises';
+import { Index, Schema } from 'tantivy';
+import { getTestIndexPath } from 'utils';
 
 const BOOKS = [
   'emma',
@@ -39,7 +39,7 @@ const PARAGRAPH_INDEX = {
   sourceDir: "by-paragraph",
 }
 
-async function buildPhraseIndex() {
+export async function buildPhraseIndex() {
   const schema = new Schema(PHRASE_INDEX.schema);
   const index = new Index({
     path: getTestIndexPath(PHRASE_INDEX.cacheDir),
@@ -49,7 +49,7 @@ async function buildPhraseIndex() {
   });
 
   // TODO: use a streaming line reader
-  const phrases = (await fs.readFile(`${__dirname}/${PHRASE_INDEX.sourceDir}/phrases.txt`, 'utf8')).split('\n');
+  const phrases = (await fs.readFile(`${import.meta.dirname}/${PHRASE_INDEX.sourceDir}/phrases.txt`, 'utf8')).split('\n');
   let _id = 0;
 
   for (const phrase of phrases) {
@@ -66,7 +66,7 @@ async function buildPhraseIndex() {
   return index;
 }
 
-async function buildParagraphIndex() {
+export async function buildParagraphIndex() {
   const schema = new Schema(PARAGRAPH_INDEX.schema);
   const index = new Index({
     path: getTestIndexPath(PARAGRAPH_INDEX.cacheDir),
@@ -78,7 +78,7 @@ async function buildParagraphIndex() {
   // TODO: try this concurrently
   for (const book of BOOKS) {
     // TODO: use a streaming JSON lines reader
-    const docs = JSON.parse(await fs.readFile(`${__dirname}/${PARAGRAPH_INDEX.sourceDir}/${book}.json`, 'utf8'));
+    const docs = JSON.parse(await fs.readFile(`${import.meta.dirname}/${PARAGRAPH_INDEX.sourceDir}/${book}.json`, 'utf8'));
     for (const doc of docs) {
       await index.addDocument(doc);
     }
@@ -89,8 +89,3 @@ async function buildParagraphIndex() {
 
   return index;
 }
-
-module.exports = {
-  buildParagraphIndex,
-  buildPhraseIndex,
-};

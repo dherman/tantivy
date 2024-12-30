@@ -1,5 +1,5 @@
-const { SchemaBuilder, Index, IndexWriter, Schema, Search, QueryParser, TopDocs } = require('../..');
-const { getTestIndexPath } = require('../utils');
+import { Index, Schema } from 'tantivy';
+import { getTestIndexPath } from 'utils';
 
 const INDEX_PATH = getTestIndexPath();
 
