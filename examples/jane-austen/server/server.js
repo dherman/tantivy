@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const { buildParagraphIndex, buildPhraseIndex } = require('../shared/build.js');
-const { time } = require('console');
+
 const CORS_OPTIONS = {
   origin: ["http://localhost:5173"],
 };
@@ -56,8 +56,8 @@ function serve({ paragraphIndex, phraseIndex }) {
     const searcher = phraseIndex.searcher();
     const terms = req.query.q.split(/\s+/);
     const query = terms.length > 1
-      ? searcher.phrasePrefixQuery(terms, "text")
-      : searcher.fuzzyTermQuery(req.query.q, "text", {
+      ? searcher.phrasePrefixQuery(terms.map(t => t.toLowerCase()), "text")
+      : searcher.fuzzyTermQuery(req.query.q.toLowerCase(), "text", {
         maxDistance: 0,
         isPrefix: true
       });
@@ -84,15 +84,14 @@ function serve({ paragraphIndex, phraseIndex }) {
   app.get('/search/', (req, res) => {
     const searcher = paragraphIndex.searcher();
     const terms = req.query.q.split(/\s+/).map(t => t.trim()).filter(t => t.length);
-
     if (terms.length === 0) {
       res.json([]);
       return;
     }
 
     const query = terms.length > 1
-      ? searcher.phrasePrefixQuery(terms, "text")
-      : searcher.fuzzyTermQuery(req.query.q, "text", {
+      ? searcher.phrasePrefixQuery(terms.map(t => t.toLowerCase()), "text")
+      : searcher.fuzzyTermQuery(req.query.q.toLowerCase(), "text", {
         maxDistance: 0,
         isPrefix: true
       });
