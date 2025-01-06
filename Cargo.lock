@@ -868,6 +868,7 @@ dependencies = [
  "ordermap",
  "serde",
  "tantivy",
+ "tantivy-fst",
 ]
 
 [[package]]

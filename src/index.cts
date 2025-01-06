@@ -10,9 +10,20 @@ declare module "./load.cjs" {
   interface BoxedIndex {}
   interface BoxedSearcher {}
   interface BoxedQuery {}
+  interface BoxedTextAnalyzer {}
 
   type SearchResult = [number, string];
 
+  type TextAnalyzerFilters = {
+    removeLong: number | null,
+    alphaNumOnly: boolean,
+    asciiFolding: boolean,
+    lowerCase: boolean,
+    // splitCompoundWords: Dictionary,
+    stemmer: Language | null,
+    filterStopWords: Language | null,
+  };
+  
   function newSchema(schema: SchemaDescriptor): BoxedSchema;
   function newIndex(path: string, heapSize: number, schema: BoxedSchema, reload_on: string): BoxedIndex;
   function addDocument(index: BoxedIndex, doc: string): BigInt;
@@ -24,14 +35,69 @@ declare module "./load.cjs" {
   function newSearcher(index: BoxedIndex): BoxedSearcher;
   function newRegexQuery(pattern: string, field: number): BoxedQuery;
   function newPhrasePrefixQuery(terms: string[], field: number): BoxedQuery;
+  function newTermQuery(term: string, field: number, options: IndexRecordOption): BoxedQuery;
+  function newPhraseQuery(terms: string[], field: number): BoxedQuery;
   function newFuzzyTermQuery(term: string, field: number, maxDistance: number, transpositionCostsOne: boolean, isPrefix: boolean): BoxedQuery;
   function topDocs(searcher: BoxedSearcher, query: BoxedQuery, limit: number): Promise<SearchResult[]>;
   function topDocsSync(searcher: BoxedSearcher, query: BoxedQuery, limit: number): SearchResult[];
+  function searchTerms(searcher: BoxedSearcher, field: number, pattern: string): string[];
+  function newTextAnalyzer(options: TextAnalyzerFilters): BoxedTextAnalyzer;
+  function registerTokenizer(index: BoxedIndex, name: string, tokenizer: BoxedTextAnalyzer): void;
+  function textAnalyzerTokenize(tokenizer: BoxedTextAnalyzer, text: string): Token[];
+}
+
+export type Token = {
+  byteOffsetFrom: number,
+  byteOffsetTo: number,
+  charOffsetFrom: number,
+  charOffsetTo: number,
+  position: number,
+  text: string,
+  positionLength: number,
+}
+
+export enum Language {
+  Arabic = "Arabic",
+  Danish = "Danish",
+  Dutch = "Dutch",
+  English = "English",
+  Finnish = "Finnish",
+  French = "French",
+  German = "German",
+  Greek = "Greek",
+  Hungarian = "Hungarian",
+  Italian = "Italian",
+  Norwegian = "Norwegian",
+  Portuguese = "Portuguese",
+  Romanian = "Romanian",
+  Russian = "Russian",
+  Spanish = "Spanish",
+  Swedish = "Swedish",
+  Tamil = "Tamil",
+  Turkish = "Turkish",
+}
+
+export type TextAnalyzerOptions = {
+  removeLong?: number | null,
+  alphaNumOnly?: boolean,
+  asciiFolding?: boolean,
+  lowerCase?: boolean,
+  // splitCompoundWords: Dictionary,
+  stemmer?: Language | null,
+  filterStopWords?: Language | null,
+};
+
+export enum IndexRecordOption {
+  Basic = "BASIC",
+  WithFreqs = "WITH_FREQS",
+  WithFreqsAndPositions = "WITH_FREQS_AND_POSITIONS",
 }
 
 export type TextFieldDescriptor = {
   type: "text",
   flags?: TextOption[],
+  index?: IndexRecordOption,
+  tokenizer?: string,
 };
 
 export type StringFieldDescriptor = {
@@ -66,6 +132,27 @@ export type SchemaDescriptor = {
 export type FieldMap = {
   [key: string]: number
 };
+
+const _BOXED_TEXT_ANALYZER: unique symbol = Symbol();
+
+export class TextAnalyzer {
+  [_BOXED_TEXT_ANALYZER]: addon.BoxedTextAnalyzer;
+
+  constructor(options: TextAnalyzerOptions = {}) {
+    this[_BOXED_TEXT_ANALYZER] = addon.newTextAnalyzer({
+      removeLong: options.removeLong ?? null,
+      alphaNumOnly: options.alphaNumOnly ?? false,
+      asciiFolding: options.asciiFolding ?? false,
+      lowerCase: options.lowerCase ?? false,
+      stemmer: options.stemmer ?? null,
+      filterStopWords: options.filterStopWords ?? null,
+    });
+  }
+
+  tokenize(text: string): Token[] {
+    return addon.textAnalyzerTokenize(this[_BOXED_TEXT_ANALYZER], text);
+  }
+}
 
 const _BOXED_SCHEMA: unique symbol = Symbol();
 
@@ -151,6 +238,10 @@ export class Index {
   searcher(): Searcher {
     return new Searcher(this, addon.newSearcher(this[_BOXED_INDEX]));
   }
+
+  registerTokenizer(name: string, tokenizer: TextAnalyzer) {
+    addon.registerTokenizer(this[_BOXED_INDEX], name, tokenizer[_BOXED_TEXT_ANALYZER]);
+  }
 }
 
 export type SearchOptions = {
@@ -186,6 +277,14 @@ export class Searcher {
     return fields.map(field => {
       return (typeof field === 'string') ? fieldsMap[field] : field;
     });
+  }
+
+  termQuery(term: string, field: string, options: IndexRecordOption = IndexRecordOption.Basic): Query {
+    return new Query(addon.newTermQuery(term, this.interpretField(field), options));
+  }
+
+  phraseQuery(terms: string[], field: string): Query {
+    return new Query(addon.newPhraseQuery(terms, this.interpretField(field)));
   }
 
   fuzzyTermQuery(term: string, field: string, options: FuzzyTermQueryOptions = {}): Query {
@@ -231,5 +330,9 @@ export class Searcher {
       query[_BOXED_QUERY],
       options.top
     );
+  }
+
+  searchTerms(field: string, pattern: string): string[] {
+    return addon.searchTerms(this[_BOXED_SEARCHER], this.interpretField(field), pattern);
   }
 }

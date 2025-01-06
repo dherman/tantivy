@@ -12,16 +12,6 @@ const BOOKS = [
   'sense-and-sensibility'
 ];
 
-const PHRASE_INDEX = {
-  schema: {
-    "_id": { type: "f64" },
-    "text": { type: "text", flags: ["STORED"] },
-  },
-  heapSize: 50_000_000,
-  cacheDir: "austen-phrases",
-  sourceDir: "by-phrase",
-};
-
 const PARAGRAPH_INDEX = {
   schema: {
     "_id": { type: "f64" },
@@ -32,41 +22,20 @@ const PARAGRAPH_INDEX = {
     "volume": { type: "f64", flags: ["STORED"] },
     "chapter": { type: "text", flags: ["STORED"] },
     "paragraph": { type: "f64", flags: ["STORED"] },
-    "text": { type: "text", flags: ["STORED"] },
+    "text": {
+      type: "text",
+      flags: ["STORED"],
+      tokenizer: "jane_austen",
+      // Needed for PhraseQuery
+      index: "WITH_FREQS_AND_POSITIONS"
+    },
   },
   heapSize: 20_000_000,
   cacheDir: "austen-paragraphs",
   sourceDir: "by-paragraph",
 }
 
-export async function buildPhraseIndex() {
-  const schema = new Schema(PHRASE_INDEX.schema);
-  const index = new Index({
-    path: getTestIndexPath(PHRASE_INDEX.cacheDir),
-    heapSize: PHRASE_INDEX.heapSize,
-    schema,
-    reloadOn: 'COMMIT_WITH_DELAY',
-  });
-
-  // TODO: use a streaming line reader
-  const phrases = (await fs.readFile(`${import.meta.dirname}/${PHRASE_INDEX.sourceDir}/phrases.txt`, 'utf8')).split('\n');
-  let _id = 0;
-
-  for (const phrase of phrases) {
-    await index.addDocument({
-      "_id": _id,
-      "text": phrase.trim(),
-    });
-    _id++;
-  }
-
-  await index.commit();
-  await index.reload();
-
-  return index;
-}
-
-export async function buildParagraphIndex() {
+export default async function buildIndex(tokenizer) {
   const schema = new Schema(PARAGRAPH_INDEX.schema);
   const index = new Index({
     path: getTestIndexPath(PARAGRAPH_INDEX.cacheDir),
@@ -75,11 +44,14 @@ export async function buildParagraphIndex() {
     reloadOn: 'COMMIT_WITH_DELAY',
   });
 
+  index.registerTokenizer('jane_austen', tokenizer);
+
   // TODO: try this concurrently
   for (const book of BOOKS) {
     // TODO: use a streaming JSON lines reader
     const docs = JSON.parse(await fs.readFile(`${import.meta.dirname}/${PARAGRAPH_INDEX.sourceDir}/${book}.json`, 'utf8'));
     for (const doc of docs) {
+      doc.raw = doc.text;
       await index.addDocument(doc);
     }
   }

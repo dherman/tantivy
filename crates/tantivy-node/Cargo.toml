@@ -17,3 +17,4 @@ neon = { git = "https://github.com/neon-bindings/neon", features = ["serde"] }
 ordermap = { version = "0.5.4", features = ["serde"] }
 serde = "1.0.215"
 tantivy = "0.22.0"
+tantivy-fst = "0.5.0"

@@ -86,9 +86,17 @@ body, html {
   font-weight: bold;
 }
 
+.results-container blockquote {
+  min-height: 105px;
+}
+
 .search-thumbnail {
   height: 75px;
-  margin-left: 1em;
   width: 50px;
   float: right;
+  margin-left: 1em;
+}
+
+.no-results {
+  padding: 4em;
 }

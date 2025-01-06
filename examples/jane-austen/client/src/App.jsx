@@ -3,7 +3,6 @@ import { AsyncTypeahead } from 'react-bootstrap-typeahead';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import 'react-bootstrap-typeahead/css/Typeahead.css';
-//import { tokenizeSentence } from 'shared/tokenize'
 
 const SEARCH_URI = 'http://localhost:5174/search/';
 const TYPEAHEAD_URI = 'http://localhost:5174/typeahead/';
@@ -17,44 +16,49 @@ function chapterName(chapter) {
   return isNaN(n) ? chapter : `Ch. ${n}`;
 }
 
-// function highlight(clip, query) {
-//   const words = query.split(/\s+/);
-//   const regex = new RegExp('(' + words.join('|') + ')', 'gi');
-//   const fragments = clip.split(regex);
-//   return clip.split(regex).map(fragment => {
-//     return words.includes(fragment) ? <strong>{fragment}</strong> : fragment;
-//   });
-// }
+function cover(matches, length) {
+  let result = [];
+  let nextOffset = 0;
+  for (let i = 0; i < matches.length; i++) {
+    let match = matches[i];
+    if (nextOffset < match.charOffsetFrom) {
+      result.push({
+        match: false,
+        charOffsetFrom: nextOffset,
+        charOffsetTo: match.charOffsetFrom,
+      });
+    }
+    result.push({
+      match: true,
+      charOffsetFrom: match.charOffsetFrom,
+      charOffsetTo: match.charOffsetTo,
+    });
+    nextOffset = match.charOffsetTo;
+  }
+  if (nextOffset < length) {
+    result.push({
+      match: false,
+      charOffsetFrom: nextOffset,
+      charOffsetTo: length,
+    });
+  }
+  return result;
+}
 
-function highlightFragments(frag, clipIndex, query) {
-  let innerClipIndex = 0;
-  return frag.split(new RegExp("(" + query + ")", "i")).map(frag => {
-    const key = clipIndex + innerClipIndex;
-    const result = (frag.toLowerCase() === query.toLowerCase())
-      ? <span className="search-highlight" key={key}>{frag}</span>
-      : <span key={key}>{frag}</span>;
-    innerClipIndex += frag.length;
-    return result;
+function withEmphasis(text) {
+  const split = text.split(/(_\w+_)/);
+  return <>{split.map((frag, i) => (frag.startsWith('_') && frag.endsWith('_')) ? <em key={i}>{frag.substring(1, frag.length - 1)}</em> : frag)}</>
+}
+
+function highlight(clip, matches) {
+  const ranges = cover(matches, clip.length);
+  return ranges.map(range => {
+    return range.match
+      ? <span key={range.charOffsetFrom} className = "search-highlight">{withEmphasis(clip.substring(range.charOffsetFrom, range.charOffsetTo))}</span>
+      : <span key={range.charOffsetFrom}>{withEmphasis(clip.substring(range.charOffsetFrom, range.charOffsetTo))}</span>;
   });
 }
 
-function highlight(clip, query) {
-  let clipIndex = 0;
-  return clip.split(/(_[^_]+_)/).flatMap(frag => {
-    const result = (frag.startsWith('_') && frag.endsWith('_'))
-      ? (<em key={clipIndex}>{frag.substring(1, frag.length - 1)}</em>)
-      : (highlightFragments(frag, clipIndex, query));
-    clipIndex += frag.length;
-    return result;
-    // if (frag.startsWith('_') && frag.endsWith('_')) {
-    //   const copy = frag.substring(1, frag.length - 1);
-    //   clipIndex += frag.length;
-    //   return <em>{copy}</em>;
-    // } else {
-    //   return <>{highlightFragments(frag, clipIndex, query)}</>;
-    // }
-  });
-}
 function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPhrase, setSelectedPhrase] = useState([]);
@@ -80,14 +84,11 @@ function App() {
     setSearchResults([]);
     setTypeaheadTime(null);
 
-    // const tokens = tokenizeSentence(query);
-    // console.error(`Tokens: ${JSON.stringify(tokens)}`);
-
     fetch(`${TYPEAHEAD_URI}?q=${encodeURI(query)}`)
       .then((resp) => resp.json())
       .then(({ time, items }) => {
         setTypeaheadTime(time);
-        setOptions(items);
+        setOptions(items.map(item => item.join(' ')));
         setIsLoading(false);
       })
       .catch(err => { console.error(err); });
@@ -131,6 +132,11 @@ function App() {
             selected={selectedPhrase}
             renderMenuItemChildren={option => (<span>{option}</span>)}
           />
+          {selectedPhrase.length > 0 && searchResults.length === 0 && (
+            <div className="text-center">
+              <img className="no-results" src="jane-wut.png" alt="No Results Found"/>
+            </div>
+          )}
           {searchResults.length > 0 && selectedPhrase.length > 0 && (
             <div className="results-container">
             {searchResults.map((result, i) => {
@@ -144,7 +150,7 @@ function App() {
                         className="search-thumbnail"
                       />
                     </a>
-                    <>{highlight(result.text, selectedPhrase[0])}</>
+                    <>{highlight(result.text, result.matches /*selectedPhrase[0]*/)}</>
                   </blockquote>
                   <p className="search-result-attribution"><a href={result.url}><em>{result.title}</em></a>, {volumeName(result.volume)}{chapterName(result.chapter)}</p>
                 </div>
