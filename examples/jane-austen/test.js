@@ -1,22 +1,17 @@
-import { buildParagraphIndex, buildPhraseIndex } from './shared/build.js';
+import buildIndex from './shared/build.js';
 import { benchmark } from 'utils';
 import { TextAnalyzer } from 'tantivy';
 
 const analyzer = new TextAnalyzer({
   lowerCase: true,
-  asciiFolding: true,
-  stemmer: "English"
+  asciiFolding: true
 });
 
 async function test() {
-  console.error("Building paragraph index...");
-  const { result: paragraphIndex, time: paragraphTime } = await benchmark(() => buildParagraphIndex());
+  console.error("Building index...");
+  const { result: paragraphIndex, time: paragraphTime } = await benchmark(() => buildIndex(analyzer));
   console.error(`Build time: ${paragraphTime}ms`);
   const paragraphs = paragraphIndex.searcher();
-  console.error("Building phrase index...");
-  const { result: phraseIndex, time: phraseTime } = await benchmark(() => buildPhraseIndex());
-  console.error(`Build time: ${phraseTime}ms`);
-  const phrases = phraseIndex.searcher();
   return {
     terms: await benchmark(async () => {
       const tokens1 = analyzer.tokenize("Love is a thing of beauty.");
@@ -41,17 +36,6 @@ async function test() {
         top: 10
       });
     }),
-    phrases: await benchmark(async () => {
-      console.error("Searching phrases...");
-      const query = phrases.fuzzyTermQuery("makebelieve", "text", {
-        maxDistance: 2,
-        isPrefix: true
-      });
-      return await phrases.search(query, {
-        fields: ["text"],
-        top: 10
-      });
-    }),
   };
 }
 
@@ -71,13 +55,6 @@ test()
     });
     console.log(JSON.stringify(paragraphsSummary, 0, 2));
     console.error(`Search time: ${result.paragraphs.time}ms`);
-
-    console.error("Phrase search:");
-    const phrasesSummary = result.phrases.result.map(([score, doc, _explanation]) => {
-      return { score, doc: JSON.parse(doc) };
-    });
-    console.log(JSON.stringify(phrasesSummary, 0, 2));
-    console.error(`Search time: ${result.phrases.time}ms`);
   })
   .catch(error => {
     console.error(error);
