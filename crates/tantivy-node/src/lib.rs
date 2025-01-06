@@ -17,12 +17,10 @@ use tantivy::{schema::{Field, Schema, TextOptions}, Index, IndexSettings, IndexW
 
 pub mod boxcell;
 pub mod boxarc;
-pub mod boxmutex;
 pub mod num;
 
 use boxcell::BoxCell;
 use boxarc::BoxArc;
-use boxmutex::BoxMutex;
 use tantivy_fst::Regex;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -341,20 +339,20 @@ fn new_phrase_prefix_query(
 fn register_tokenizer(
     Boxed(index): Boxed<BoxArc<OpenIndex>>,
     name: String,
-    Boxed(tokenizer): Boxed<BoxMutex<TextAnalyzer>>,
+    Boxed(tokenizer): Boxed<BoxCell<TextAnalyzer>>,
 ) {
     let manager = index.index.tokenizers();
-    manager.register(&name, tokenizer.lock().unwrap().clone());
+    manager.register(&name, tokenizer.as_ref().clone());
 }
 
 #[neon::export]
 fn new_text_analyzer(
     Json(filters): Json<TextAnalyzerFilters>,
-) -> Result<Boxed<BoxMutex<TextAnalyzer>>, Error> {
+) -> Result<Boxed<BoxCell<TextAnalyzer>>, Error> {
     // TODO: need a way to build off something other than a simple tokenizer
     let builder = TextAnalyzer::builder(SimpleTokenizer::default());
     let analyzer = filters.apply(builder);
-    Ok(Boxed(BoxMutex::new(analyzer)))
+    Ok(Boxed(BoxCell::new(analyzer)))
 }
 
 fn count_chars_until_offset(i: &mut CharIndices, byte_offset: usize) -> usize {
@@ -370,10 +368,10 @@ fn count_chars_until_offset(i: &mut CharIndices, byte_offset: usize) -> usize {
 
 #[neon::export]
 fn text_analyzer_tokenize(
-    Boxed(analyzer): Boxed<BoxMutex<TextAnalyzer>>,
+    Boxed(analyzer): Boxed<BoxCell<TextAnalyzer>>,
     text: String,
 ) -> Json<Vec<Token>> {
-    let mut analyzer = analyzer.lock().unwrap();
+    let mut analyzer = analyzer.as_mut();
     let mut stream = analyzer.token_stream(&text);
     let mut result = vec![];
     let mut char_indices: CharIndices = text.char_indices();
