@@ -1,9 +1,10 @@
+use std::cell::{Ref, RefCell, RefMut};
 use std::path::PathBuf;
 use std::str::CharIndices;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use neon::{prelude::*, types::JsBigInt};
-use neon::types::extract::{Boxed, Error, Json};
+use neon::types::extract::{Error, Json};
 
 use num::{u53, Project};
 use ordermap::OrderMap;
@@ -15,12 +16,8 @@ use tantivy::tokenizer::{AlphaNumOnlyFilter, AsciiFoldingFilter, Language, Lower
 use tantivy::{Document, IndexReader, ReloadPolicy, Score, Searcher, Term};
 use tantivy::{schema::{Field, Schema, TextOptions}, Index, IndexSettings, IndexWriter, TantivyDocument};
 
-pub mod boxcell;
-pub mod boxarc;
 pub mod num;
 
-use boxcell::BoxCell;
-use boxarc::BoxArc;
 use tantivy_fst::Regex;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -263,17 +260,17 @@ fn add_field(builder: &mut SchemaBuilder, name: &str, options: &FieldDescriptor)
 #[neon::export]
 fn new_schema(
     Json(descriptor): Json<OrderMap<String, FieldDescriptor>>,
-) -> Boxed<BoxCell<Schema>> {
+) -> RefCell<Schema> {
     let mut builder = Schema::builder();
     for (field_name, options) in descriptor.iter() {
         add_field(&mut builder, field_name, options);
     }
-    Boxed(BoxCell::new(builder.build()))
+    RefCell::new(builder.build())
 }
 
 #[neon::export(task)]
 fn commit(
-    Boxed(index): Boxed<BoxArc<OpenIndex>>,
+    index: Arc<OpenIndex>,
 ) -> Result<(), Error> {
     index.writer.lock().map_err(|_| "mutex poisoned")?.commit()?;
     Ok(())
@@ -281,16 +278,16 @@ fn commit(
 
 #[neon::export]
 fn commit_sync(
-    index: Boxed<BoxArc<OpenIndex>>,
+    index: Arc<OpenIndex>,
 ) -> Result<(), Error> {
     commit(index)
 }
 
 #[neon::export]
 fn new_searcher(
-    Boxed(index): Boxed<BoxArc<OpenIndex>>,
-) -> Result<Boxed<BoxArc<Searcher>>, Error> {
-    Ok(Boxed(BoxArc::new(index.reader.lock().map_err(|_| "mutex poisoned")?.searcher())))
+    index: Arc<OpenIndex>,
+) -> Result<Arc<Searcher>, Error> {
+    Ok(Arc::new(index.reader.lock().map_err(|_| "mutex poisoned")?.searcher()))
 }
 
 struct OpenIndex {
@@ -316,43 +313,43 @@ impl From<ReloadOnPolicy> for ReloadPolicy {
 }
 
 #[neon::export]
-fn new_regex_query(pattern: String, field: f64) -> Result<Boxed<BoxArc<Box<dyn Query>>>, Error> {
+fn new_regex_query(pattern: String, field: f64) -> Result<Arc<Box<dyn Query>>, Error> {
     let field = Field::from_field_id(field as u32);
     let query = RegexQuery::from_pattern(&pattern, field)?;
-    Ok(Boxed(BoxArc::new(Box::new(query))))
+    Ok(Arc::new(Box::new(query)))
 }
 
 #[neon::export]
 fn new_phrase_prefix_query(
     Json(terms): Json<Vec<String>>,
     field: f64,
-) -> Result<Boxed<BoxArc<Box<dyn Query>>>, Error> {
+) -> Result<Arc<Box<dyn Query>>, Error> {
     let field = Field::from_field_id(field as u32);
     let terms = terms.into_iter().map(|term| {
         Term::from_field_text(field, &term)
     }).collect();
     let query = PhrasePrefixQuery::new(terms);
-    Ok(Boxed(BoxArc::new(Box::new(query))))
+    Ok(Arc::new(Box::new(query)))
 }
 
 #[neon::export]
 fn register_tokenizer(
-    Boxed(index): Boxed<BoxArc<OpenIndex>>,
+    index: Arc<OpenIndex>,
     name: String,
-    Boxed(tokenizer): Boxed<BoxCell<TextAnalyzer>>,
+    tokenizer: Ref<TextAnalyzer>,
 ) {
     let manager = index.index.tokenizers();
-    manager.register(&name, tokenizer.as_ref().clone());
+    manager.register(&name, tokenizer.clone());
 }
 
 #[neon::export]
 fn new_text_analyzer(
     Json(filters): Json<TextAnalyzerFilters>,
-) -> Result<Boxed<BoxCell<TextAnalyzer>>, Error> {
+) -> Result<RefCell<TextAnalyzer>, Error> {
     // TODO: need a way to build off something other than a simple tokenizer
     let builder = TextAnalyzer::builder(SimpleTokenizer::default());
     let analyzer = filters.apply(builder);
-    Ok(Boxed(BoxCell::new(analyzer)))
+    Ok(RefCell::new(analyzer))
 }
 
 fn count_chars_until_offset(i: &mut CharIndices, byte_offset: usize) -> usize {
@@ -368,10 +365,9 @@ fn count_chars_until_offset(i: &mut CharIndices, byte_offset: usize) -> usize {
 
 #[neon::export]
 fn text_analyzer_tokenize(
-    Boxed(analyzer): Boxed<BoxCell<TextAnalyzer>>,
+    mut analyzer: RefMut<TextAnalyzer>,
     text: String,
 ) -> Json<Vec<Token>> {
-    let mut analyzer = analyzer.as_mut();
     let mut stream = analyzer.token_stream(&text);
     let mut result = vec![];
     let mut char_indices: CharIndices = text.char_indices();
@@ -391,24 +387,24 @@ fn new_term_query(
     term: String,
     field: f64,
     Json(options): Json<IndexRecordOption>,
-) -> Result<Boxed<BoxArc<Box<dyn Query>>>, Error> {
+) -> Result<Arc<Box<dyn Query>>, Error> {
     let field = Field::from_field_id(field as u32);
     let term = Term::from_field_text(field, &term);
     let query = TermQuery::new(term, options.into());
-    Ok(Boxed(BoxArc::new(Box::new(query))))
+    Ok(Arc::new(Box::new(query)))
 }
 
 #[neon::export]
 fn new_phrase_query(
     Json(terms): Json<Vec<String>>,
     field: f64,
-) -> Result<Boxed<BoxArc<Box<dyn Query>>>, Error> {
+) -> Result<Arc<Box<dyn Query>>, Error> {
     let field = Field::from_field_id(field as u32);
     let terms = terms.into_iter().map(|term| {
         Term::from_field_text(field, &term)
     }).collect();
     let query = PhraseQuery::new(terms);
-    Ok(Boxed(BoxArc::new(Box::new(query))))
+    Ok(Arc::new(Box::new(query)))
 }
 
 #[neon::export]
@@ -418,7 +414,7 @@ fn new_fuzzy_term_query(
     max_distance: f64,
     transposition_costs_one: bool,
     is_prefix: bool,
-) -> Result<Boxed<BoxArc<Box<dyn Query>>>, Error> {
+) -> Result<Arc<Box<dyn Query>>, Error> {
     let field = Field::from_field_id(field as u32);
     let term = Term::from_field_text(field, &term);
     let query = if is_prefix {
@@ -426,31 +422,31 @@ fn new_fuzzy_term_query(
     } else {
         FuzzyTermQuery::new(term, max_distance as u8, transposition_costs_one)
     };
-    Ok(Boxed(BoxArc::new(Box::new(query))))
+    Ok(Arc::new(Box::new(query)))
 }
 
 #[neon::export]
 fn parse_query(
-    Boxed(searcher): Boxed<BoxArc<Searcher>>,
+    searcher: Arc<Searcher>,
     source: String,
     Json(fields): Json<Vec<f64>>,
-) -> Result<Boxed<BoxArc<Box<dyn Query>>>, Error> {
+) -> Result<Arc<Box<dyn Query>>, Error> {
     let index = searcher.index();
     let fields = fields.iter().map(|id| Field::from_field_id(*id as u32)).collect();
     let query_parser: QueryParser = QueryParser::for_index(index, fields);
-    Ok(Boxed(BoxArc::new(query_parser.parse_query(&source)?)))
+    Ok(Arc::new(query_parser.parse_query(&source)?))
 }
 
 #[neon::export]
 fn new_index(
     path: String,
     heap_size: f64,
-    Boxed(schema): Boxed<BoxCell<Schema>>,
+    schema: Ref<Schema>,
     Json(reload_on): Json<ReloadOnPolicy>,
-) -> Result<Boxed<BoxArc<OpenIndex>>, Error> {
+) -> Result<Arc<OpenIndex>, Error> {
     let dir_path = PathBuf::from(path);
     let dir = tantivy::directory::MmapDirectory::open(dir_path)?;
-    let index = Index::create(dir, schema.as_ref().clone(), IndexSettings::default())?;
+    let index = Index::create(dir, schema.clone(), IndexSettings::default())?;
     let reader = Mutex::new(
         index
             .reader_builder()
@@ -461,12 +457,12 @@ fn new_index(
     let heap_size: u64 = heap_size.into();
     let heap_size: usize = heap_size.try_into()?;
     let writer = Mutex::new(index.writer(heap_size)?);
-    Ok(Boxed(BoxArc::new(OpenIndex { index, writer, reader })))
+    Ok(Arc::new(OpenIndex { index, writer, reader }))
 }
 
 #[neon::export(task)]
 fn reload(
-    Boxed(index): Boxed<BoxArc<OpenIndex>>,
+    index: Arc<OpenIndex>,
 ) -> Result<(), Error> {
     index.reader.lock().map_err(|_| "mutex poisoned")?.reload()?;
     Ok(())
@@ -474,7 +470,7 @@ fn reload(
 
 #[neon::export]
 fn reload_sync(
-    index: Boxed<BoxArc<OpenIndex>>
+    index: Arc<OpenIndex>
 ) -> Result<(), Error> {
     reload(index)
 }
@@ -482,7 +478,7 @@ fn reload_sync(
 #[neon::export]
 fn add_document<'cx>(
     cx: &mut FunctionContext<'cx>,
-    Boxed(index): Boxed<BoxArc<OpenIndex>>,
+    index: Arc<OpenIndex>,
     document: String,
 ) -> JsResult<'cx, JsBigInt> {
     let td = TantivyDocument::parse_json(&index.index.schema(), &document)
@@ -497,8 +493,8 @@ fn add_document<'cx>(
 
 #[neon::export(task)]
 fn top_docs(
-    Boxed(searcher): Boxed<BoxArc<Searcher>>,
-    Boxed(query): Boxed<BoxArc<Box<dyn Query>>>,
+    searcher: Arc<Searcher>,
+    query: Arc<Box<dyn Query>>,
     limit: f64,
 ) -> Json<Vec<(Score, String, Explanation)>>{
     let index = searcher.index();
@@ -520,7 +516,7 @@ fn top_docs(
 // TODO: expose TermDictionary as a first-class type
 #[neon::export]
 fn search_terms(
-    Boxed(searcher): Boxed<BoxArc<Searcher>>,
+    searcher: Arc<Searcher>,
     field: f64,
     pattern: String,
 ) -> Json<Vec<String>>
@@ -542,8 +538,8 @@ fn search_terms(
 
 #[neon::export]
 fn top_docs_sync<'cx>(
-    searcher: Boxed<BoxArc<Searcher>>,
-    query: Boxed<BoxArc<Box<dyn Query>>>,
+    searcher: Arc<Searcher>,
+    query: Arc<Box<dyn Query>>,
     limit: f64,
 ) -> Json<Vec<(Score, String, Explanation)>>{
     top_docs(searcher, query, limit)
