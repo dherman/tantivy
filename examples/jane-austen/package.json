@@ -6,13 +6,14 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "concurrently \"cd server && npm run dev\" \"cd client && npm run dev\""
+    "dev": "concurrently \"cd server && npm run dev\" \"cd client && npm run dev\"",
+    "postinstall": "cd server && npm install && cd ../client && npm install"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
   },
   "dependencies": {
-    "utils": "../utils",
-    "tantivy": "../.."
+    "tantivy": "../..",
+    "utils": "../utils"
   }
 }
