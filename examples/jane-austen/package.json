@@ -7,7 +7,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "concurrently \"cd server && npm run dev\" \"cd client && npm run dev\"",
-    "postinstall": "cd server && npm install && cd ../client && npm install"
+    "postinstall": "cd shared && npm install && cd ../server && npm install && cd ../client && npm install"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

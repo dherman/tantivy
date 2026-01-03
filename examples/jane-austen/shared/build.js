@@ -37,12 +37,14 @@ const PARAGRAPH_INDEX = {
 
 export default async function buildIndex(tokenizer) {
   const schema = new Schema(PARAGRAPH_INDEX.schema);
-  const index = new Index({
-    path: getTestIndexPath(PARAGRAPH_INDEX.cacheDir),
-    heapSize: PARAGRAPH_INDEX.heapSize,
+  const index = new Index(
+    getTestIndexPath(PARAGRAPH_INDEX.cacheDir),
     schema,
-    reloadOn: 'COMMIT_WITH_DELAY',
-  });
+    {
+      heapSize: PARAGRAPH_INDEX.heapSize,
+      reloadOn: 'COMMIT_WITH_DELAY',
+    }
+  );
 
   index.registerTokenizer('jane_austen', tokenizer);
 

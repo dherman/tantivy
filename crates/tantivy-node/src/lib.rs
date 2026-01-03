@@ -1,4 +1,4 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::str::CharIndices;
 use std::sync::{Arc, Mutex};
@@ -10,26 +10,104 @@ use num::{u53, Project};
 use ordermap::OrderMap;
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
-use tantivy::query::{Explanation, FuzzyTermQuery, PhrasePrefixQuery, PhraseQuery, Query, QueryParser, RegexQuery, TermQuery};
+use tantivy::query::{Explanation, FuzzyTermQuery, PhrasePrefixQuery, PhraseQuery, RegexQuery, TermQuery};
 use tantivy::schema::{NumericOptions, SchemaBuilder, TextFieldIndexing};
-use tantivy::tokenizer::{AlphaNumOnlyFilter, AsciiFoldingFilter, Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter, TextAnalyzer, TextAnalyzerBuilder, TokenStream, Tokenizer, WhitespaceTokenizer};
-use tantivy::{Document, IndexReader, ReloadPolicy, Score, Searcher, Term};
-use tantivy::{schema::{Field, Schema, TextOptions}, Index, IndexSettings, IndexWriter, TantivyDocument};
+use tantivy::tokenizer::{AlphaNumOnlyFilter, AsciiFoldingFilter, Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter, TextAnalyzerBuilder, TokenStream, Tokenizer};
+use tantivy::{Document, IndexReader, ReloadPolicy, Score, Term};
+use tantivy::{schema::{Field, TextOptions}, IndexSettings, IndexWriter, TantivyDocument};
 
 pub mod num;
 
 use tantivy_fst::Regex;
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct TextAnalyzerFilters {
-    remove_long: Option<f64>,
-    alpha_num_only: bool,
-    ascii_folding: bool,
-    lower_case: bool,
+// Explicitly-qualified Tantivy types to distinguish from our JS wrapper types of the same names.
+mod t {
+    pub use tantivy::schema::Schema;
+    pub use tantivy::query::Query;
+    pub use tantivy::{Index, Searcher};
+    pub use tantivy::tokenizer::TextAnalyzer;
+}
+
+// This might deserve a nice convenience syntax in Neon, in the form of a proper
+// attribute proc macro. It would look nice as something like:
+//
+// #[neon::options]
+// struct IndexOptions {
+//     heap_size: f64 = 10_000_000.0,
+//     reload_on: ReloadOnPolicy = ReloadOnPolicy::CommitWithDelay,
+// }
+
+macro_rules! options_struct {
+    ($name:ident, $full:ident, { $($field:ident : $ty:ty = $default:expr,)* }) => {
+        #[derive(Serialize, Deserialize, Debug)]
+        #[serde(rename_all = "camelCase")]
+        struct $name {
+            $( $field: Option<$ty>, )*
+        }
+
+        #[allow(unused)]
+        struct $full {
+            $( $field: $ty, )*
+        }
+
+        impl $name {
+            #[allow(unused)]
+            const DEFAULT: $full = $full {
+                $( $field: $default, )*
+            };
+
+            #[allow(unused)]
+            pub fn with_defaults(self) -> $full {
+                $full {
+                    $( $field: self.$field.unwrap_or(Self::DEFAULT.$field), )*
+                }
+            }
+        }
+
+        impl std::default::Default for $name {
+            fn default() -> Self {
+                Self {
+                    $( $field: Some($default), )*
+                }
+            }
+        }
+    };
+}
+
+options_struct!(IndexOptions, IndexOptionsFull, {
+    heap_size: f64 = 10_000_000.0,
+    reload_on: ReloadOnPolicy = ReloadOnPolicy::CommitWithDelay,
+});
+
+options_struct!(SearchOptions, SearchOptionsFull, {
+    top: f64 = 10.0,
+});
+
+options_struct!(TextAnalyzerFilters, TextAnalyzerFiltersFull, {
+    remove_long: f64 = 0.0,
+    alpha_num_only: bool = false,
+    ascii_folding: bool = false,
+    lower_case: bool = false,
     // TODO: split_compound_words
-    stemmer: Option<LanguageName>,
-    filter_stop_words: Option<LanguageName>,
+    stemmer: LanguageName = LanguageName::English,
+    filter_stop_words: LanguageName = LanguageName::English,
+});
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct FuzzyTermQueryOptions {
+    max_distance: u32,
+    transposition_costs_one: bool,
+    is_prefix: bool,
+}
+
+impl std::default::Default for FuzzyTermQueryOptions {
+    fn default() -> Self {
+        Self {
+            max_distance: 0,
+            transposition_costs_one: true,
+            is_prefix: false,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -60,7 +138,7 @@ impl Token {
 }
 
 impl TextAnalyzerFilters {
-    fn apply<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> TextAnalyzer {
+    fn apply<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         // Step through the filters one at a time. This tail recursive style
         // allows each method to take a generic base type since the specific
         // base type depends on which filters actually get applied, but the
@@ -68,7 +146,7 @@ impl TextAnalyzerFilters {
         self.apply_remove_long(builder)
     }
 
-    fn apply_remove_long<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> TextAnalyzer {
+    fn apply_remove_long<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.remove_long {
             // TODO: better cast
             Some(n) => self.apply_alpha_num_only(builder.filter(RemoveLongFilter::limit(n as usize))),
@@ -76,35 +154,35 @@ impl TextAnalyzerFilters {
         }
     }
 
-    fn apply_alpha_num_only<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> TextAnalyzer {
+    fn apply_alpha_num_only<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.alpha_num_only {
-            true => self.apply_ascii_folding(builder.filter(AlphaNumOnlyFilter)),
-            false => self.apply_ascii_folding(builder),
+            Some(true) => self.apply_ascii_folding(builder.filter(AlphaNumOnlyFilter)),
+            _ => self.apply_ascii_folding(builder),
         }
     }
 
-    fn apply_ascii_folding<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> TextAnalyzer {
+    fn apply_ascii_folding<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.ascii_folding {
-            true => self.apply_lower_caser(builder.filter(AsciiFoldingFilter)),
-            false => self.apply_lower_caser(builder),
+            Some(true) => self.apply_lower_caser(builder.filter(AsciiFoldingFilter)),
+            _ => self.apply_lower_caser(builder),
         }
     }
 
-    fn apply_lower_caser<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> TextAnalyzer {
+    fn apply_lower_caser<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.lower_case {
-            true => self.apply_stemmer(builder.filter(LowerCaser)),
-            false => self.apply_stemmer(builder),
+            Some(true) => self.apply_stemmer(builder.filter(LowerCaser)),
+            _ => self.apply_stemmer(builder),
         }
     }
 
-    fn apply_stemmer<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> TextAnalyzer {
+    fn apply_stemmer<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.stemmer {
             Some(language) => self.apply_stop_words(builder.filter(Stemmer::new(language.into()))),
             None => self.apply_stop_words(builder),
         }
     }
 
-    fn apply_stop_words<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> TextAnalyzer {
+    fn apply_stop_words<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.filter_stop_words {
             Some(language) => builder.filter(StopWordFilter::new(language.into()).unwrap()).build(),
             None => builder.build(),
@@ -112,9 +190,10 @@ impl TextAnalyzerFilters {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum IndexRecordOption {
+    #[default]
     Basic,
     WithFreqs,
     WithFreqsAndPositions,
@@ -179,7 +258,7 @@ impl From<LanguageName> for Language {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum FieldDescriptor {
     Text {
@@ -197,12 +276,12 @@ enum FieldDescriptor {
     // TODO: | IpAddrFieldDescriptor
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 enum TextOption {
     STORED,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 enum NumericOption {
     STORED,
     INDEXED,
@@ -257,41 +336,310 @@ fn add_field(builder: &mut SchemaBuilder, name: &str, options: &FieldDescriptor)
     }
 }
 
-#[neon::export]
-fn new_schema(
-    Json(descriptor): Json<OrderMap<String, FieldDescriptor>>,
-) -> RefCell<Schema> {
-    let mut builder = Schema::builder();
-    for (field_name, options) in descriptor.iter() {
-        add_field(&mut builder, field_name, options);
+#[derive(Clone)]
+struct Schema {
+    schema: RefCell<t::Schema>,
+    fields: OrderMap<String, FieldDescriptor>,
+}
+
+#[neon::export(class)]
+impl Schema {
+    fn new(Json(fields): Json<OrderMap<String, FieldDescriptor>>) -> Self {
+        let mut builder = t::Schema::builder();
+        for (field_name, options) in fields.iter() {
+            add_field(&mut builder, field_name, options);
+        }
+        Self {
+            schema: RefCell::new(builder.build()),
+            fields: fields,
+        }
     }
-    RefCell::new(builder.build())
+
+    fn fields(&self) -> Json<OrderMap<String, FieldDescriptor>> {
+        Json(self.fields.clone())
+    }
 }
 
-#[neon::export(task)]
-fn commit(
-    index: Arc<OpenIndex>,
-) -> Result<(), Error> {
-    index.writer.lock().map_err(|_| "mutex poisoned")?.commit()?;
-    Ok(())
+#[derive(Clone)]
+struct Searcher {
+    searcher: Arc<t::Searcher>,
 }
 
-#[neon::export]
-fn commit_sync(
-    index: Arc<OpenIndex>,
-) -> Result<(), Error> {
-    commit(index)
+impl Searcher {
+    fn interpret_field(&self, field: &str) -> Result<Field, Error> {
+        Ok(self.searcher
+            .index()
+            .schema()
+            .get_field(field)?)
+    }
 }
 
-#[neon::export]
-fn new_searcher(
+#[neon::export(class)]
+impl Searcher {
+    fn new(
+        index: Arc<OpenIndex>,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            searcher: Arc::new(index.reader.lock().map_err(|_| "mutex poisoned")?.searcher()),
+        })
+    }
+
+    fn term_query(
+        &self,
+        term: String,
+        field: String,
+        options: Option<Json<IndexRecordOption>>,
+    ) -> Result<Query, Error> {
+        let field = self.interpret_field(&field)?;
+        let term = Term::from_field_text(field, &term);
+        let Json(options) = options.unwrap_or(Json(IndexRecordOption::default()));
+        let query = TermQuery::new(term, options.into());
+        Ok(Query { query: Arc::new(Box::new(query)) })
+    }
+
+    fn phrase_query(
+        &self,
+        Json(terms): Json<Vec<String>>,
+        field: String,
+    ) -> Result<Query, Error> {
+        let field = self.interpret_field(&field)?;
+        let terms = terms.into_iter().map(|term| {
+            Term::from_field_text(field, &term)
+        }).collect();
+        let query = PhraseQuery::new(terms);
+        Ok(Query { query: Arc::new(Box::new(query)) })
+    }
+
+    fn fuzzy_term_query(
+        &self,
+        term: String,
+        field: String,
+        options: Option<Json<FuzzyTermQueryOptions>>,
+    ) -> Result<Query, Error> {
+        let field = self.interpret_field(&field)?;
+        let term = Term::from_field_text(field, &term);
+        let Json(options) = options.unwrap_or(Json(FuzzyTermQueryOptions::default()));
+        let query = if options.is_prefix {
+            FuzzyTermQuery::new_prefix(term, options.max_distance as u8, options.transposition_costs_one)
+        } else {
+            FuzzyTermQuery::new(term, options.max_distance as u8, options.transposition_costs_one)
+        };
+        Ok(Query { query: Arc::new(Box::new(query)) })
+    }
+
+    fn regexp_query(
+        &self,
+        pattern: String,
+        field: String,
+    ) -> Result<Query, Error> {
+        let field = self.interpret_field(&field)?;
+        let query = RegexQuery::from_pattern(&pattern, field)?;
+        Ok(Query { query: Arc::new(Box::new(query)) })
+    }
+
+    fn phrase_prefix_query(
+        &self,
+        Json(terms): Json<Vec<String>>,
+        field: String,
+    ) -> Result<Query, Error> {
+        let field = self.interpret_field(&field)?;
+        let terms = terms.into_iter().map(|term| {
+            Term::from_field_text(field, &term)
+        }).collect();
+        let query = PhrasePrefixQuery::new(terms);
+        Ok(Query { query: Arc::new(Box::new(query)) })
+    }
+
+    fn search_sync(
+        &self,
+        query: &Query,
+        options: Option<Json<SearchOptions>>,
+    ) -> Json<Vec<(Score, String, Explanation)>>{
+        let index = self.searcher.index();
+        let schema = index.schema();
+        let Json(options) = options.unwrap_or(Json(SearchOptions::default()));
+        let options = options.with_defaults();
+        let collector = TopDocs::with_limit(options.top as usize);
+        Json(
+            self.searcher
+                .search(query.query.as_ref(), &collector)
+                .unwrap()
+                .iter()
+                .map(|&(score, doc_address)| {
+                    let retrieved_doc: TantivyDocument = self.searcher.doc(doc_address).unwrap();
+                    (score, retrieved_doc.to_json(&schema), query.query.explain(&self.searcher, doc_address).unwrap())
+                })
+                .collect::<Vec<_>>()
+        )
+    }
+
+    #[neon(task)]
+    fn search(
+        self,
+        query: Query,
+        options: Option<Json<SearchOptions>>,
+    ) -> Json<Vec<(Score, String, Explanation)>>{
+        self.search_sync(&query, options)
+    }
+
+    fn search_terms(
+        &self,
+        field: String,
+        pattern: String,
+    ) -> Result<Json<Vec<String>>, Error>
+    {
+        let readers = self.searcher.segment_readers();
+        let field = self.interpret_field(&field)?;
+        let mut result = vec![];
+        for reader in readers {
+            let inverted_index = reader.inverted_index(field)?;
+            let dict = inverted_index.terms();
+            let mut stream = dict.search(Regex::new(&pattern)?).into_stream()?;
+            while let Some((term, _)) = stream.next() {
+                let term = String::from_utf8_lossy(term);
+                result.push(term.to_string());
+            }
+        }
+        Ok(Json(result))
+    }
+}
+
+#[derive(Clone)]
+struct TextAnalyzer {
+    analyzer: RefCell<t::TextAnalyzer>,
+}
+
+#[neon::export(class)]
+impl TextAnalyzer {
+    fn new(
+        filters: Option<Json<TextAnalyzerFilters>>,
+    ) -> Result<Self, Error> {
+        // TODO: need a way to build off something other than a simple tokenizer
+        let builder = t::TextAnalyzer::builder(SimpleTokenizer::default());
+        let Json(filters) = filters.unwrap_or(Json(TextAnalyzerFilters::default()));
+        let analyzer = filters.apply(builder);
+        Ok(Self {
+            analyzer: RefCell::new(analyzer),
+        })
+    }
+
+    fn tokenize(&mut self, text: String) -> Json<Vec<Token>> {
+        let mut analyzer = self.analyzer.borrow_mut();
+        let mut stream = analyzer.token_stream(&text);
+        let mut result = vec![];
+        let mut char_indices: CharIndices = text.char_indices();
+        let mut char_offset = 0;
+        stream.process(&mut |token| {
+            char_offset += count_chars_until_offset(&mut char_indices, token.offset_from);
+            let char_offset_from = char_offset;
+            char_offset += count_chars_until_offset(&mut char_indices, token.offset_to);
+            let char_offset_to = char_offset;
+            result.push(Token::new(token, char_offset_from, char_offset_to));
+        });
+        Json(result)
+    }
+}
+
+#[derive(Clone)]
+struct Index {
     index: Arc<OpenIndex>,
-) -> Result<Arc<Searcher>, Error> {
-    Ok(Arc::new(index.reader.lock().map_err(|_| "mutex poisoned")?.searcher()))
+}
+
+#[neon::export(class)]
+impl Index {
+    fn new(
+        path: String,
+        schema: Schema,
+        options: Option<Json<IndexOptions>>,
+    ) -> Result<Self, Error> {
+        let dir_path = PathBuf::from(path);
+        let dir = tantivy::directory::MmapDirectory::open(dir_path)?;
+        let index = t::Index::create(dir, schema.schema.borrow().clone(), IndexSettings::default())?;
+        let Json(options) = options.unwrap_or(Json(IndexOptions::default()));
+        let options = options.with_defaults();
+        let reader = Mutex::new(
+            index
+                .reader_builder()
+                .reload_policy(options.reload_on.into())
+                .try_into()?
+        );
+        let heap_size: u53 = options.heap_size.project()?;
+        let heap_size: u64 = heap_size.into();
+        let heap_size: usize = heap_size.try_into()?;
+        let writer = Mutex::new(index.writer(heap_size)?);
+        Ok(Self {
+            index: Arc::new(OpenIndex { index, writer, reader }),
+        })
+    }
+
+    #[neon(task)]
+    fn commit(self) -> Result<(), Error> {
+        self.commit_sync()
+    }
+
+    fn commit_sync(&self) -> Result<(), Error> {
+        self.index.writer.lock().map_err(|_| "mutex poisoned")?.commit()?;
+        Ok(())
+    }
+
+    #[neon(task)]
+    fn reload(self) -> Result<(), Error> {
+        self.reload_sync()
+    }
+
+    fn reload_sync(&self) -> Result<(), Error> {
+        self.index.reader.lock().map_err(|_| "mutex poisoned")?.reload()?;
+        Ok(())
+    }
+
+    fn add_document<'cx>(
+        &self,
+        cx: &mut FunctionContext<'cx>,
+        document: Handle<'cx, JsValue>,
+    ) -> JsResult<'cx, JsBigInt> {
+        // FIXME: we should really have a stringify API
+        let stringify: Handle<'_, JsFunction> = cx.global::<JsObject>("JSON")?.get(cx, "stringify")?;
+        let document: Handle<JsString> = stringify.bind(cx).arg(document)?.call()?;
+        let document: String = document.value(cx);
+        // FIXME: find a cleaner way to convert Tantivy errors into exceptions
+        let td = TantivyDocument::parse_json(&self.index.index.schema(), &document).unwrap();
+        let stamp = self.index.writer
+            .lock()
+            .map_err(|_| "mutex poisoned").unwrap()
+            .add_document(td).unwrap();
+        Ok(JsBigInt::from_u64(cx, stamp))
+    }
+
+    fn searcher(&self) -> Result<Searcher, Error> {
+        Searcher::new(self.index.clone())
+    }
+
+    fn register_tokenizer(
+        &self,
+        name: String,
+        tokenizer: TextAnalyzer,
+    ) {
+        let manager = self.index.index.tokenizers();
+        manager.register(&name, tokenizer.analyzer.borrow().clone());
+    }
+}
+
+#[derive(Clone)]
+struct Query {
+    query: Arc<Box<dyn t::Query>>,
+}
+
+#[neon::export(class)]
+impl Query {
+    fn new(
+        query: Arc<Box<dyn t::Query>>,
+    ) -> Self {
+        Self { query }
+    }
 }
 
 struct OpenIndex {
-    index: Index,
+    index: t::Index,
     writer: Mutex<IndexWriter>,
     reader: Mutex<IndexReader>,
 }
@@ -312,46 +660,6 @@ impl From<ReloadOnPolicy> for ReloadPolicy {
     }
 }
 
-#[neon::export]
-fn new_regex_query(pattern: String, field: f64) -> Result<Arc<Box<dyn Query>>, Error> {
-    let field = Field::from_field_id(field as u32);
-    let query = RegexQuery::from_pattern(&pattern, field)?;
-    Ok(Arc::new(Box::new(query)))
-}
-
-#[neon::export]
-fn new_phrase_prefix_query(
-    Json(terms): Json<Vec<String>>,
-    field: f64,
-) -> Result<Arc<Box<dyn Query>>, Error> {
-    let field = Field::from_field_id(field as u32);
-    let terms = terms.into_iter().map(|term| {
-        Term::from_field_text(field, &term)
-    }).collect();
-    let query = PhrasePrefixQuery::new(terms);
-    Ok(Arc::new(Box::new(query)))
-}
-
-#[neon::export]
-fn register_tokenizer(
-    index: Arc<OpenIndex>,
-    name: String,
-    tokenizer: Ref<TextAnalyzer>,
-) {
-    let manager = index.index.tokenizers();
-    manager.register(&name, tokenizer.clone());
-}
-
-#[neon::export]
-fn new_text_analyzer(
-    Json(filters): Json<TextAnalyzerFilters>,
-) -> Result<RefCell<TextAnalyzer>, Error> {
-    // TODO: need a way to build off something other than a simple tokenizer
-    let builder = TextAnalyzer::builder(SimpleTokenizer::default());
-    let analyzer = filters.apply(builder);
-    Ok(RefCell::new(analyzer))
-}
-
 fn count_chars_until_offset(i: &mut CharIndices, byte_offset: usize) -> usize {
     let mut chars = 0;
     while i.offset() < byte_offset {
@@ -361,208 +669,4 @@ fn count_chars_until_offset(i: &mut CharIndices, byte_offset: usize) -> usize {
         chars += 1;
     }
     chars
-}
-
-#[neon::export]
-fn text_analyzer_tokenize(
-    mut analyzer: RefMut<TextAnalyzer>,
-    text: String,
-) -> Json<Vec<Token>> {
-    let mut stream = analyzer.token_stream(&text);
-    let mut result = vec![];
-    let mut char_indices: CharIndices = text.char_indices();
-    let mut char_offset = 0;
-    stream.process(&mut |token| {
-        char_offset += count_chars_until_offset(&mut char_indices, token.offset_from);
-        let char_offset_from = char_offset;
-        char_offset += count_chars_until_offset(&mut char_indices, token.offset_to);
-        let char_offset_to = char_offset;
-        result.push(Token::new(token, char_offset_from, char_offset_to));
-    });
-    Json(result)
-}
-
-#[neon::export]
-fn new_term_query(
-    term: String,
-    field: f64,
-    Json(options): Json<IndexRecordOption>,
-) -> Result<Arc<Box<dyn Query>>, Error> {
-    let field = Field::from_field_id(field as u32);
-    let term = Term::from_field_text(field, &term);
-    let query = TermQuery::new(term, options.into());
-    Ok(Arc::new(Box::new(query)))
-}
-
-#[neon::export]
-fn new_phrase_query(
-    Json(terms): Json<Vec<String>>,
-    field: f64,
-) -> Result<Arc<Box<dyn Query>>, Error> {
-    let field = Field::from_field_id(field as u32);
-    let terms = terms.into_iter().map(|term| {
-        Term::from_field_text(field, &term)
-    }).collect();
-    let query = PhraseQuery::new(terms);
-    Ok(Arc::new(Box::new(query)))
-}
-
-#[neon::export]
-fn new_fuzzy_term_query(
-    term: String,
-    field: f64,
-    max_distance: f64,
-    transposition_costs_one: bool,
-    is_prefix: bool,
-) -> Result<Arc<Box<dyn Query>>, Error> {
-    let field = Field::from_field_id(field as u32);
-    let term = Term::from_field_text(field, &term);
-    let query = if is_prefix {
-        FuzzyTermQuery::new_prefix(term, max_distance as u8, transposition_costs_one)
-    } else {
-        FuzzyTermQuery::new(term, max_distance as u8, transposition_costs_one)
-    };
-    Ok(Arc::new(Box::new(query)))
-}
-
-#[neon::export]
-fn parse_query(
-    searcher: Arc<Searcher>,
-    source: String,
-    Json(fields): Json<Vec<f64>>,
-) -> Result<Arc<Box<dyn Query>>, Error> {
-    let index = searcher.index();
-    let fields = fields.iter().map(|id| Field::from_field_id(*id as u32)).collect();
-    let query_parser: QueryParser = QueryParser::for_index(index, fields);
-    Ok(Arc::new(query_parser.parse_query(&source)?))
-}
-
-#[neon::export]
-fn new_index(
-    path: String,
-    heap_size: f64,
-    schema: Ref<Schema>,
-    Json(reload_on): Json<ReloadOnPolicy>,
-) -> Result<Arc<OpenIndex>, Error> {
-    let dir_path = PathBuf::from(path);
-    let dir = tantivy::directory::MmapDirectory::open(dir_path)?;
-    let index = Index::create(dir, schema.clone(), IndexSettings::default())?;
-    let reader = Mutex::new(
-        index
-            .reader_builder()
-            .reload_policy(reload_on.into())
-            .try_into()?
-    );
-    let heap_size: u53 = heap_size.project()?;
-    let heap_size: u64 = heap_size.into();
-    let heap_size: usize = heap_size.try_into()?;
-    let writer = Mutex::new(index.writer(heap_size)?);
-    Ok(Arc::new(OpenIndex { index, writer, reader }))
-}
-
-#[neon::export(task)]
-fn reload(
-    index: Arc<OpenIndex>,
-) -> Result<(), Error> {
-    index.reader.lock().map_err(|_| "mutex poisoned")?.reload()?;
-    Ok(())
-}
-
-#[neon::export]
-fn reload_sync(
-    index: Arc<OpenIndex>
-) -> Result<(), Error> {
-    reload(index)
-}
-
-#[neon::export]
-fn add_document<'cx>(
-    cx: &mut FunctionContext<'cx>,
-    index: Arc<OpenIndex>,
-    document: String,
-) -> JsResult<'cx, JsBigInt> {
-    let td = TantivyDocument::parse_json(&index.index.schema(), &document)
-        .or_else(|err| cx.throw_error(err.to_string()))?;
-    let stamp = index.writer
-        .lock()
-        .or_else(|_| cx.throw_error("mutex poisoned"))?
-        .add_document(td)
-        .or_else(|err| cx.throw_error(err.to_string()))?;
-    Ok(JsBigInt::from_u64(cx, stamp))
-}
-
-#[neon::export(task)]
-fn top_docs(
-    searcher: Arc<Searcher>,
-    query: Arc<Box<dyn Query>>,
-    limit: f64,
-) -> Json<Vec<(Score, String, Explanation)>>{
-    let index = searcher.index();
-    let schema = index.schema();
-    let collector = TopDocs::with_limit(limit as usize);
-    Json(
-        searcher
-            .search(&*query, &collector)
-            .unwrap()
-            .iter()
-            .map(|&(score, doc_address)| {
-                let retrieved_doc: TantivyDocument = searcher.doc(doc_address).unwrap();
-                (score, retrieved_doc.to_json(&schema), query.explain(&searcher, doc_address).unwrap())
-            })
-            .collect::<Vec<_>>()
-    )
-}
-
-// TODO: expose TermDictionary as a first-class type
-#[neon::export]
-fn search_terms(
-    searcher: Arc<Searcher>,
-    field: f64,
-    pattern: String,
-) -> Json<Vec<String>>
-{
-    let readers = searcher.segment_readers();
-    let field = Field::from_field_id(field as u32);
-    let mut result = vec![];
-    for reader in readers {
-        let inverted_index = reader.inverted_index(field).unwrap();
-        let dict = inverted_index.terms();
-        let mut stream = dict.search(Regex::new(&pattern).unwrap()).into_stream().unwrap();
-        while let Some((term, _)) = stream.next() {
-            let term = String::from_utf8_lossy(term);
-            result.push(term.to_string());
-        }
-    }
-    Json(result)
-}
-
-#[neon::export]
-fn top_docs_sync<'cx>(
-    searcher: Arc<Searcher>,
-    query: Arc<Box<dyn Query>>,
-    limit: f64,
-) -> Json<Vec<(Score, String, Explanation)>>{
-    top_docs(searcher, query, limit)
-}
-
-#[neon::export]
-fn simple_tokenize(input: String) -> Json<Vec<String>> {
-    let mut tokenizer = SimpleTokenizer::default();
-    let mut stream = tokenizer.token_stream(&input);
-    let mut result = vec![];
-    stream.process(&mut |token| {
-        result.push(token.text.clone());
-    });
-    Json(result)
-}
-
-#[neon::export]
-fn whitespace_tokenize(input: String) -> Json<Vec<String>> {
-    let mut tokenizer = WhitespaceTokenizer::default();
-    let mut stream = tokenizer.token_stream(&input);
-    let mut result = vec![];
-    stream.process(&mut |token| {
-        result.push(token.text.clone());
-    });
-    Json(result)
 }
