@@ -65,6 +65,7 @@ struct TextAnalyzerFilters {
     alpha_num_only: bool,
     ascii_folding: bool,
     lower_case: bool,
+    // TODO: split_compound_words
     stemmer: Option<LanguageName>,
     filter_stop_words: Option<LanguageName>,
 }
@@ -76,7 +77,6 @@ impl Default for TextAnalyzerFilters {
             alpha_num_only: false,
             ascii_folding: false,
             lower_case: false,
-            // TODO: split_compound_words
             stemmer: None,
             filter_stop_words: None,
         }
