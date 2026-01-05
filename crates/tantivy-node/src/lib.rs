@@ -583,18 +583,18 @@ impl Index {
     fn add_document<'cx>(
         &self,
         cx: &mut FunctionContext<'cx>,
-        document: Handle<'cx, JsValue>,
+        Json(document): Json<serde_json::Map<String, serde_json::Value>>,
     ) -> JsResult<'cx, JsBigInt> {
-        // FIXME: we should really have a stringify API
-        let stringify: Handle<'_, JsFunction> = cx.global::<JsObject>("JSON")?.get(cx, "stringify")?;
-        let document: Handle<JsString> = stringify.bind(cx).arg(document)?.call()?;
-        let document: String = document.value(cx);
-        // FIXME: find a cleaner way to convert Tantivy errors into exceptions
-        let td = TantivyDocument::parse_json(&self.index.index.schema(), &document).unwrap();
+        let document = match TantivyDocument::from_json_object(&self.index.index.schema(), document) {
+            Ok(doc) => doc,
+            Err(err) => {
+                return cx.throw_error(format!("failed to parse document: {}", err));
+            }
+        };
         let stamp = self.index.writer
             .lock()
             .map_err(|_| "mutex poisoned").unwrap()
-            .add_document(td).unwrap();
+            .add_document(document).unwrap();
         Ok(JsBigInt::from_u64(cx, stamp))
     }
 
