@@ -41,8 +41,7 @@ export default async function buildIndex(tokenizer) {
     getTestIndexPath(PARAGRAPH_INDEX.cacheDir),
     schema,
     {
-      heapSize: PARAGRAPH_INDEX.heapSize,
-      reloadOn: 'COMMIT_WITH_DELAY',
+      heapSize: PARAGRAPH_INDEX.heapSize
     }
   );
 

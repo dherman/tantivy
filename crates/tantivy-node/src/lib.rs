@@ -28,70 +28,60 @@ mod t {
     pub use tantivy::tokenizer::TextAnalyzer;
 }
 
-// This might deserve a nice convenience syntax in Neon, in the form of a proper
-// attribute proc macro. It would look nice as something like:
-//
-// #[neon::options]
-// struct IndexOptions {
-//     heap_size: f64 = 10_000_000.0,
-//     reload_on: ReloadOnPolicy = ReloadOnPolicy::CommitWithDelay,
-// }
-
-macro_rules! options_struct {
-    ($name:ident, $full:ident, { $($field:ident : $ty:ty = $default:expr,)* }) => {
-        #[derive(Serialize, Deserialize, Debug)]
-        #[serde(rename_all = "camelCase")]
-        struct $name {
-            $( $field: Option<$ty>, )*
-        }
-
-        #[allow(unused)]
-        struct $full {
-            $( $field: $ty, )*
-        }
-
-        impl $name {
-            #[allow(unused)]
-            const DEFAULT: $full = $full {
-                $( $field: $default, )*
-            };
-
-            #[allow(unused)]
-            pub fn with_defaults(self) -> $full {
-                $full {
-                    $( $field: self.$field.unwrap_or(Self::DEFAULT.$field), )*
-                }
-            }
-        }
-
-        impl std::default::Default for $name {
-            fn default() -> Self {
-                Self {
-                    $( $field: Some($default), )*
-                }
-            }
-        }
-    };
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(default, rename_all = "camelCase")]
+struct IndexOptions {
+    heap_size: f64,
+    reload_on: ReloadOnPolicy,
 }
 
-options_struct!(IndexOptions, IndexOptionsFull, {
-    heap_size: f64 = 10_000_000.0,
-    reload_on: ReloadOnPolicy = ReloadOnPolicy::CommitWithDelay,
-});
+impl Default for IndexOptions {
+    fn default() -> Self {
+        Self {
+            heap_size: 10_000_000.0,
+            reload_on: ReloadOnPolicy::CommitWithDelay,
+        }
+    }
+}
 
-options_struct!(SearchOptions, SearchOptionsFull, {
-    top: f64 = 10.0,
-});
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(default, rename_all = "camelCase")]
+struct SearchOptions {
+    top: f64,
+}
 
-options_struct!(TextAnalyzerFilters, TextAnalyzerFiltersFull, {
-    remove_long: f64 = 0.0,
-    alpha_num_only: bool = false,
-    ascii_folding: bool = false,
-    lower_case: bool = false,
-    // TODO: split_compound_words
-    stemmer: LanguageName = LanguageName::English,
-    filter_stop_words: LanguageName = LanguageName::English,
-});
+impl Default for SearchOptions {
+    fn default() -> Self {
+        Self {
+            top: 10.0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(default, rename_all = "camelCase")]
+struct TextAnalyzerFilters {
+    remove_long: Option<f64>,
+    alpha_num_only: bool,
+    ascii_folding: bool,
+    lower_case: bool,
+    stemmer: Option<LanguageName>,
+    filter_stop_words: Option<LanguageName>,
+}
+
+impl Default for TextAnalyzerFilters {
+    fn default() -> Self {
+        Self {
+            remove_long: None,
+            alpha_num_only: false,
+            ascii_folding: false,
+            lower_case: false,
+            // TODO: split_compound_words
+            stemmer: None,
+            filter_stop_words: None,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FuzzyTermQueryOptions {
@@ -156,22 +146,22 @@ impl TextAnalyzerFilters {
 
     fn apply_alpha_num_only<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.alpha_num_only {
-            Some(true) => self.apply_ascii_folding(builder.filter(AlphaNumOnlyFilter)),
-            _ => self.apply_ascii_folding(builder),
+            true => self.apply_ascii_folding(builder.filter(AlphaNumOnlyFilter)),
+            false => self.apply_ascii_folding(builder),
         }
     }
 
     fn apply_ascii_folding<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.ascii_folding {
-            Some(true) => self.apply_lower_caser(builder.filter(AsciiFoldingFilter)),
-            _ => self.apply_lower_caser(builder),
+            true => self.apply_lower_caser(builder.filter(AsciiFoldingFilter)),
+            false => self.apply_lower_caser(builder),
         }
     }
 
     fn apply_lower_caser<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         match self.lower_case {
-            Some(true) => self.apply_stemmer(builder.filter(LowerCaser)),
-            _ => self.apply_stemmer(builder),
+            true => self.apply_stemmer(builder.filter(LowerCaser)),
+            false => self.apply_stemmer(builder),
         }
     }
 
@@ -453,12 +443,11 @@ impl Searcher {
     fn search_sync(
         &self,
         query: &Query,
-        options: Option<Json<SearchOptions>>,
+        Json(options): Json<Option<SearchOptions>>,
     ) -> Json<Vec<(Score, String, Explanation)>>{
         let index = self.searcher.index();
         let schema = index.schema();
-        let Json(options) = options.unwrap_or(Json(SearchOptions::default()));
-        let options = options.with_defaults();
+        let options = options.unwrap_or_default();
         let collector = TopDocs::with_limit(options.top as usize);
         Json(
             self.searcher
@@ -477,7 +466,7 @@ impl Searcher {
     fn search(
         self,
         query: Query,
-        options: Option<Json<SearchOptions>>,
+        options: Json<Option<SearchOptions>>,
     ) -> Json<Vec<(Score, String, Explanation)>>{
         self.search_sync(&query, options)
     }
@@ -550,13 +539,12 @@ impl Index {
     fn new(
         path: String,
         schema: Schema,
-        options: Option<Json<IndexOptions>>,
+        Json(options): Json<Option<IndexOptions>>,
     ) -> Result<Self, Error> {
         let dir_path = PathBuf::from(path);
         let dir = tantivy::directory::MmapDirectory::open(dir_path)?;
         let index = t::Index::create(dir, schema.schema.borrow().clone(), IndexSettings::default())?;
-        let Json(options) = options.unwrap_or(Json(IndexOptions::default()));
-        let options = options.with_defaults();
+        let options = options.unwrap_or_default();
         let reader = Mutex::new(
             index
                 .reader_builder()
