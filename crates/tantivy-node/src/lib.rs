@@ -28,7 +28,7 @@ mod t {
     pub use tantivy::tokenizer::TextAnalyzer;
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, neon::TypeScript)]
 #[serde(default, rename_all = "camelCase")]
 struct IndexOptions {
     heap_size: f64,
@@ -44,7 +44,7 @@ impl Default for IndexOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, neon::TypeScript)]
 #[serde(default, rename_all = "camelCase")]
 struct SearchOptions {
     top: f64,
@@ -58,7 +58,7 @@ impl Default for SearchOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, neon::TypeScript)]
 #[serde(default, rename_all = "camelCase")]
 struct TextAnalyzerFilters {
     remove_long: Option<f64>,
@@ -83,7 +83,7 @@ impl Default for TextAnalyzerFilters {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, neon::TypeScript)]
 struct FuzzyTermQueryOptions {
     max_distance: u32,
     transposition_costs_one: bool,
@@ -100,7 +100,7 @@ impl std::default::Default for FuzzyTermQueryOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, neon::TypeScript)]
 #[serde(rename_all = "camelCase")]
 struct Token {
     // TODO: how should we deal with larger than 32 bits?
@@ -180,7 +180,7 @@ impl TextAnalyzerFilters {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, neon::TypeScript)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum IndexRecordOption {
     #[default]
@@ -201,7 +201,7 @@ impl From<IndexRecordOption> for tantivy::schema::IndexRecordOption {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, neon::TypeScript)]
 enum LanguageName {
     Arabic,
     Danish,
@@ -248,7 +248,7 @@ impl From<LanguageName> for Language {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, neon::TypeScript)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum FieldDescriptor {
     Text {
@@ -266,12 +266,12 @@ enum FieldDescriptor {
     // TODO: | IpAddrFieldDescriptor
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, neon::TypeScript)]
 enum TextOption {
     STORED,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, neon::TypeScript)]
 enum NumericOption {
     STORED,
     INDEXED,
@@ -632,7 +632,7 @@ struct OpenIndex {
     reader: Mutex<IndexReader>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, neon::TypeScript)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum ReloadOnPolicy {
     CommitWithDelay,
@@ -657,4 +657,9 @@ fn count_chars_until_offset(i: &mut CharIndices, byte_offset: usize) -> usize {
         chars += 1;
     }
     chars
+}
+
+#[neon::export]
+fn generate_typescript_declarations() -> String {
+    neon::typescript::generate()
 }

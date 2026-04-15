@@ -422,9 +422,8 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
 name = "neon"
-version = "1.2.0-alpha.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b369318a3f63d9fbc7e663bb04be2fbf13ab4c8bbc8b185ea9dc7988529295e8"
+version = "1.1.1"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#ad1867ec953a0a7e4bd722680683e19967512fe0"
 dependencies = [
  "either",
  "getrandom",
@@ -441,9 +440,8 @@ dependencies = [
 
 [[package]]
 name = "neon-macros"
-version = "1.2.0-alpha.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e89e910c030108900f00779b4326f02c022b28e765382d32487b6d091a6cad48"
+version = "1.1.1"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#ad1867ec953a0a7e4bd722680683e19967512fe0"
 dependencies = [
  "proc-macro2",
  "quote",
