@@ -5,6 +5,7 @@
 To run the web app demo, run
 
 ```
+$ npm install
 $ npm run dev
 ```
 
