@@ -1,6 +1,18 @@
-const addon = require("./index.node");
+// Runs after `cargo build && neon dist && tsc`. Locates the platform-specific
+// addon that `neon dist` just produced, then regenerates src/generated.d.cts
+// (used by the next tsc compile) and overwrites lib/load.d.cts with the types
+// as direct exports so consumers see them natively on the addon module.
 const fs = require("fs");
 const path = require("path");
+
+// `neon dist` stages the binary at ./platforms/<platform>/index.node when
+// NEON_BUILD_PLATFORM is set (the CI path), and at ./index.node otherwise
+// (the local debug path).
+const platform = process.env.NEON_BUILD_PLATFORM;
+const addonPath = platform
+  ? path.join(__dirname, "platforms", platform, "index.node")
+  : path.join(__dirname, "index.node");
+const addon = require(addonPath);
 
 const raw = addon.generateTypescriptDeclarations();
 
@@ -22,9 +34,9 @@ cleaned = cleaned.replace(
 // `export` so consumers can import them.
 cleaned = cleaned.replace(/^(interface |type )/gm, "export $1");
 
-// src/generated.d.cts: a module augmentation so tsc (compiling src/) sees the
-// types on ./load.cjs. Nested inside `declare module`, then made a module via
-// `export {}`.
+// src/generated.d.cts: a module augmentation so the next tsc (compiling src/)
+// sees the types on ./load.cjs. Checked into git so fresh clones can run tsc
+// without a prior build.
 const indented = cleaned
   .split("\n")
   .map((line) => (line.trim() ? "  " + line : line))
@@ -35,18 +47,14 @@ const srcPath = path.join(__dirname, "src", "generated.d.cts");
 fs.writeFileSync(srcPath, srcContent);
 console.log(`Wrote ${srcPath}`);
 
-// lib/load.d.cts: after tsc emits `export {};`, overwrite with the same types
-// as direct top-level exports so consumers see them natively on the addon
-// module. Skip if tsc hasn't run yet (this script runs once before tsc to
-// prime src/, and again after tsc to update lib/).
+// lib/load.d.cts: overwrite the `export {};` tsc emitted with the same types
+// as direct top-level exports so consumers see them natively.
 const libLoad = path.join(__dirname, "lib", "load.d.cts");
-if (fs.existsSync(libLoad)) {
-  fs.writeFileSync(libLoad, cleaned);
-  console.log(`Wrote ${libLoad}`);
+fs.writeFileSync(libLoad, cleaned);
+console.log(`Wrote ${libLoad}`);
 
-  // Clean up any stale generated.d.cts from a previous pipeline version.
-  const staleGenerated = path.join(__dirname, "lib", "generated.d.cts");
-  if (fs.existsSync(staleGenerated)) {
-    fs.unlinkSync(staleGenerated);
-  }
+// Clean up any stale generated.d.cts from a previous pipeline version.
+const staleGenerated = path.join(__dirname, "lib", "generated.d.cts");
+if (fs.existsSync(staleGenerated)) {
+  fs.unlinkSync(staleGenerated);
 }
