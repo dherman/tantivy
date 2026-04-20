@@ -240,6 +240,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashbrown"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
+
+[[package]]
 name = "hermit-abi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -253,13 +259,14 @@ checksum = "e9025058dae765dee5070ec375f591e2ba14638c63feff74f13805a72e523163"
 
 [[package]]
 name = "indexmap"
-version = "2.7.0"
+version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62f822373a4fe84d4bb149bf54e584a7f4abec90e072ed49cda0edea5b95471f"
+checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.17.0",
  "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -374,7 +381,7 @@ version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
 dependencies = [
- "hashbrown",
+ "hashbrown 0.15.2",
 ]
 
 [[package]]
@@ -423,7 +430,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 [[package]]
 name = "neon"
 version = "1.1.1"
-source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#ad1867ec953a0a7e4bd722680683e19967512fe0"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#58a728fe5be8e49defc5b57fd44b690603a70515"
 dependencies = [
  "either",
  "getrandom",
@@ -431,6 +438,7 @@ dependencies = [
  "linkme",
  "neon-macros",
  "once_cell",
+ "ordermap",
  "semver",
  "send_wrapper",
  "serde",
@@ -441,7 +449,7 @@ dependencies = [
 [[package]]
 name = "neon-macros"
 version = "1.1.1"
-source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#ad1867ec953a0a7e4bd722680683e19967512fe0"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#58a728fe5be8e49defc5b57fd44b690603a70515"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -498,12 +506,13 @@ checksum = "e296cf87e61c9cfc1a61c3c63a0f7f286ed4554e0e22be84e8a38e1d264a2a29"
 
 [[package]]
 name = "ordermap"
-version = "0.5.4"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f80a48eb68b6a7da9829b8b0429011708f775af80676a91063d023a66a656106"
+checksum = "7f7476a5b122ff1fce7208e7ee9dccd0a516e835f5b8b19b8f3c98a34cf757c1"
 dependencies = [
  "indexmap",
  "serde",
+ "serde_core",
 ]
 
 [[package]]
