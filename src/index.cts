@@ -1,14 +1,6 @@
 // This module is the CJS entry point for the library.
 
-import type {
-  FieldDescriptor,
-  FuzzyTermQueryOptions,
-  IndexOptions,
-  IndexRecordOption,
-  SearchOptions,
-  TextAnalyzerOptions,
-  Token,
-} from "./generated.cjs";
+import type { FieldDescriptor } from "./load.cjs";
 
 // Re-export all types generated from the Rust definitions.
 export type {
@@ -23,10 +15,11 @@ export type {
   TextAnalyzerOptions,
   TextOption,
   Token,
-} from "./generated.cjs";
+} from "./load.cjs";
 
-// Use this declaration to assign types to the addon's exports,
-// which otherwise by default are `any`.
+// Hand-written class shapes override return types neon can't yet infer
+// (e.g. BigInt, SearchResult[]). The data-type members of this module are
+// filled in by the generated augmentation in generated.d.cts.
 declare module "./load.cjs" {
   export interface Query {}
 
