@@ -1,7 +1,25 @@
 // This module is the CJS entry point for the library.
 
-// Use this declaration to assign types to the addon's exports,
-// which otherwise by default are `any`.
+import type { FieldDescriptor } from "./load.cjs";
+
+// Re-export all types generated from the Rust definitions.
+export type {
+  FieldDescriptor,
+  FuzzyTermQueryOptions,
+  IndexOptions,
+  IndexRecordOption,
+  Language,
+  NumericOption,
+  ReloadPolicy,
+  SearchOptions,
+  TextAnalyzerOptions,
+  TextOption,
+  Token,
+} from "./load.cjs";
+
+// Hand-written class shapes override return types neon can't yet infer
+// (e.g. BigInt, SearchResult[]). The data-type members of this module are
+// filled in by the generated augmentation in generated.d.cts.
 declare module "./load.cjs" {
   export interface Query {}
 
@@ -28,7 +46,6 @@ declare module "./load.cjs" {
 
   export class Index {
     constructor(path: string, schema: Schema, options?: IndexOptions);
-    schema(): Schema;
     addDocument(doc: any): BigInt;
     commit(): Promise<void>;
     commitSync(): void;
@@ -39,106 +56,9 @@ declare module "./load.cjs" {
   }
 }
 
-export type Token = {
-  byteOffsetFrom: number,
-  byteOffsetTo: number,
-  charOffsetFrom: number,
-  charOffsetTo: number,
-  position: number,
-  text: string,
-  positionLength: number,
-}
-
-export enum Language {
-  Arabic = "Arabic",
-  Danish = "Danish",
-  Dutch = "Dutch",
-  English = "English",
-  Finnish = "Finnish",
-  French = "French",
-  German = "German",
-  Greek = "Greek",
-  Hungarian = "Hungarian",
-  Italian = "Italian",
-  Norwegian = "Norwegian",
-  Portuguese = "Portuguese",
-  Romanian = "Romanian",
-  Russian = "Russian",
-  Spanish = "Spanish",
-  Swedish = "Swedish",
-  Tamil = "Tamil",
-  Turkish = "Turkish",
-}
-
-export type TextAnalyzerOptions = {
-  removeLong?: number | null,
-  alphaNumOnly?: boolean,
-  asciiFolding?: boolean,
-  lowerCase?: boolean,
-  // splitCompoundWords: Dictionary,
-  stemmer?: Language | null,
-  filterStopWords?: Language | null,
-};
-
-export enum IndexRecordOption {
-  Basic = "BASIC",
-  WithFreqs = "WITH_FREQS",
-  WithFreqsAndPositions = "WITH_FREQS_AND_POSITIONS",
-}
-
-export type TextFieldDescriptor = {
-  type: "text",
-  flags?: TextOption[],
-  index?: IndexRecordOption,
-  tokenizer?: string,
-};
-
-export type StringFieldDescriptor = {
-  type: "string",
-  flags?: TextOption[],
-};
-
-export type F64FieldDescriptor = {
-  type: "f64",
-  flags?: NumericOption[],
-};
-
-// TODO: | I64FieldDescriptor
-// TODO: | U64FieldDescriptor
-// TODO: | DateFieldDescriptor
-// TODO: | BoolFieldDescriptor
-// TODO: | IpAddrFieldDescriptor
-export type FieldDescriptor =
-  TextFieldDescriptor
-  | StringFieldDescriptor
-  | F64FieldDescriptor;
-
-export type TextOption = 'STORED';
-export type NumericOption = 'STORED' | 'INDEXED';
-
+// Type aliases that aren't auto-generated.
 export type Field = number;
-
-export type SchemaDescriptor = {
-  [key: string]: FieldDescriptor
-};
-
-export type ReloadPolicy = 'COMMIT_WITH_DELAY' | 'MANUAL';
-
-export type IndexOptions = {
-  heapSize?: number,
-  reloadOn?: ReloadPolicy,
-}
-
-export type SearchOptions = {
-  top?: number
-}
-
-export type FuzzyTermQueryOptions = {
-  maxDistance?: number,
-  transpositionCostsOne?: boolean,
-  isPrefix?: boolean,
-};
-
+export type SchemaDescriptor = Record<string, FieldDescriptor>;
 export type SearchResult = [number, string];
 
 export { Index, Searcher, Query, Schema, TextAnalyzer } from "./load.cjs";
