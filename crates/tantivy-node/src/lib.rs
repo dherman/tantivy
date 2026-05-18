@@ -441,6 +441,7 @@ impl Searcher {
         Ok(Query { query: Arc::new(Box::new(query)) })
     }
 
+    #[neon(ts_returns = "[number, string][]")]
     fn search_sync(
         &self,
         query: &Query,
@@ -463,7 +464,7 @@ impl Searcher {
         )
     }
 
-    #[neon(task)]
+    #[neon(task, ts_returns = "[number, string][]")]
     fn search(
         self,
         query: Query,
@@ -581,6 +582,7 @@ impl Index {
         Ok(())
     }
 
+    #[neon(ts_returns = "bigint")]
     fn add_document<'cx>(
         &self,
         cx: &mut FunctionContext<'cx>,
@@ -658,9 +660,4 @@ fn count_chars_until_offset(i: &mut CharIndices, byte_offset: usize) -> usize {
         chars += 1;
     }
     chars
-}
-
-#[neon::export]
-fn generate_typescript_declarations() -> String {
-    neon::typescript::generate()
 }

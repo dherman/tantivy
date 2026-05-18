@@ -48,7 +48,38 @@ declare module "./load.cjs" {
     positionLength: number;
   }
 
-
+  export declare class Index {
+    constructor(path: string, schema: Schema, options: IndexOptions | undefined | null);
+    commit(): Promise<undefined>;
+    commitSync(): void;
+    reload(): Promise<undefined>;
+    reloadSync(): void;
+    addDocument(document: any): bigint;
+    searcher(): Searcher;
+    registerTokenizer(name: string, tokenizer: TextAnalyzer): void;
+  }
+  export declare class Query {
+    constructor(query: any);
+  }
+  export declare class Schema {
+    constructor(fields: Record<string, FieldDescriptor>);
+    fields(): Record<string, FieldDescriptor>;
+  }
+  export declare class Searcher {
+    constructor(index: any);
+    termQuery(term: string, field: string, options: IndexRecordOption | undefined | null): Query;
+    phraseQuery(terms: string[], field: string): Query;
+    fuzzyTermQuery(term: string, field: string, options: FuzzyTermQueryOptions | undefined | null): Query;
+    regexpQuery(pattern: string, field: string): Query;
+    phrasePrefixQuery(terms: string[], field: string): Query;
+    searchSync(query: Query, options: SearchOptions | undefined | null): [number, string][];
+    search(query: Query, options: SearchOptions | undefined | null): Promise<[number, string][]>;
+    searchTerms(field: string, pattern: string): string[];
+  }
+  export declare class TextAnalyzer {
+    constructor(filters: TextAnalyzerOptions | undefined | null);
+    tokenize(text: string): Token[];
+  }
 
 }
 

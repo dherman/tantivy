@@ -1,7 +1,8 @@
-// Runs after `cargo build && neon dist && tsc`. Locates the platform-specific
-// addon that `neon dist` just produced, then regenerates src/generated.d.cts
-// (used by the next tsc compile) and overwrites lib/load.d.cts with the types
-// as direct exports so consumers see them natively on the addon module.
+// Runs after `cargo build && neon dist && tsc`. Reads the .d.ts text that
+// neon's `typescript` feature auto-attaches to the addon under
+// Symbol.for("neon:types"), then regenerates src/generated.d.cts (used by
+// the next tsc compile) and overwrites lib/load.d.cts with the same types
+// as direct top-level exports so consumers see them natively on the addon.
 const fs = require("fs");
 const path = require("path");
 
@@ -14,29 +15,11 @@ const addonPath = platform
   : path.join(__dirname, "index.node");
 const addon = require(addonPath);
 
-const raw = addon.generateTypescriptDeclarations();
+const cleaned = addon[Symbol.for("neon:types")];
 
-// Strip the `generateTypescriptDeclarations` function — it's an internal
-// helper, not part of the public API.
-let cleaned = raw.replace(
-  /^export declare function generateTypescriptDeclarations\(\):.*$\n?/gm,
-  ""
-);
-
-// Strip class declarations — they're hand-written in src/index.cts so we can
-// override return types neon can't yet infer (BigInt, SearchResult[], etc.).
-cleaned = cleaned.replace(
-  /^export declare class \w+ \{[\s\S]*?^\}\n?/gm,
-  ""
-);
-
-// Neon emits top-level `interface` and `type` without `export`. Prepend
-// `export` so consumers can import them.
-cleaned = cleaned.replace(/^(interface |type )/gm, "export $1");
-
-// src/generated.d.cts: a module augmentation so the next tsc (compiling src/)
-// sees the types on ./load.cjs. Checked into git so fresh clones can run tsc
-// without a prior build.
+// src/generated.d.cts: module augmentation so tsc (compiling src/) sees the
+// types on ./load.cjs. Wrapped in `declare module` and made a module via
+// `export {}`.
 const indented = cleaned
   .split("\n")
   .map((line) => (line.trim() ? "  " + line : line))
@@ -52,9 +35,3 @@ console.log(`Wrote ${srcPath}`);
 const libLoad = path.join(__dirname, "lib", "load.d.cts");
 fs.writeFileSync(libLoad, cleaned);
 console.log(`Wrote ${libLoad}`);
-
-// Clean up any stale generated.d.cts from a previous pipeline version.
-const staleGenerated = path.join(__dirname, "lib", "generated.d.cts");
-if (fs.existsSync(staleGenerated)) {
-  fs.unlinkSync(staleGenerated);
-}
