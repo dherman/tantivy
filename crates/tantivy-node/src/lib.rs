@@ -581,7 +581,6 @@ impl Index {
         Ok(())
     }
 
-    #[neon(ts_returns = "bigint")]
     fn add_document<'cx>(
         &self,
         cx: &mut FunctionContext<'cx>,
