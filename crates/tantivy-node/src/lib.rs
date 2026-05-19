@@ -618,7 +618,7 @@ struct Query {
     query: Arc<Box<dyn t::Query>>,
 }
 
-#[neon::export(class)]
+#[neon::export(class, ts_no_constructor)]
 impl Query {
     fn new(
         query: Arc<Box<dyn t::Query>>,
