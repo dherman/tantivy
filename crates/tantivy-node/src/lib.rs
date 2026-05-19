@@ -10,7 +10,7 @@ use num::{u53, Project};
 use ordermap::OrderMap;
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
-use tantivy::query::{Explanation, FuzzyTermQuery, PhrasePrefixQuery, PhraseQuery, RegexQuery, TermQuery};
+use tantivy::query::{FuzzyTermQuery, PhrasePrefixQuery, PhraseQuery, RegexQuery, TermQuery};
 use tantivy::schema::{NumericOptions, SchemaBuilder, TextFieldIndexing};
 use tantivy::tokenizer::{AlphaNumOnlyFilter, AsciiFoldingFilter, Language as TantivyLanguage, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter, TextAnalyzerBuilder, TokenStream, Tokenizer};
 use tantivy::{Document, IndexReader, ReloadPolicy as TantivyReloadPolicy, Score, Term};
@@ -441,12 +441,11 @@ impl Searcher {
         Ok(Query { query: Arc::new(Box::new(query)) })
     }
 
-    #[neon(ts_returns = "[number, string][]")]
     fn search_sync(
         &self,
         query: &Query,
         Json(options): Json<Option<SearchOptions>>,
-    ) -> Json<Vec<(Score, String, Explanation)>>{
+    ) -> Json<Vec<(Score, String)>>{
         let index = self.searcher.index();
         let schema = index.schema();
         let options = options.unwrap_or_default();
@@ -458,18 +457,18 @@ impl Searcher {
                 .iter()
                 .map(|&(score, doc_address)| {
                     let retrieved_doc: TantivyDocument = self.searcher.doc(doc_address).unwrap();
-                    (score, retrieved_doc.to_json(&schema), query.query.explain(&self.searcher, doc_address).unwrap())
+                    (score, retrieved_doc.to_json(&schema))
                 })
                 .collect::<Vec<_>>()
         )
     }
 
-    #[neon(task, ts_returns = "[number, string][]")]
+    #[neon(task)]
     fn search(
         self,
         query: Query,
         options: Json<Option<SearchOptions>>,
-    ) -> Json<Vec<(Score, String, Explanation)>>{
+    ) -> Json<Vec<(Score, String)>>{
         self.search_sync(&query, options)
     }
 
