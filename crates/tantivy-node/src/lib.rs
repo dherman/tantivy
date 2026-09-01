@@ -6,9 +6,10 @@ use std::sync::{Arc, Mutex};
 use neon::{prelude::*, types::JsBigInt};
 use neon::types::extract::{Error, Json};
 use neon_ts_rs::TypeScript;
-// Brings the ts-rs boundary rung (rung 2) into scope, so foreign types that impl
-// only `ts_rs::TS` (e.g. `IndexMap`) resolve at a `Json<T>` boundary instead of
-// degrading to `any`. Imported as `_` because it's used only via method resolution.
+// Lets ts-rs describe foreign types — ones we didn't define, like `IndexMap` —
+// used directly at an export boundary, so they're typed instead of falling back
+// to `any`. One import per module with such exports; it's never called (the
+// import alone turns the coverage on), hence `as _`.
 use neon_ts_rs::TypeScriptExt as _;
 use ts_rs::TS;
 
