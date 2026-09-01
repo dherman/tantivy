@@ -30,7 +30,6 @@ declare module "./load.cjs" {
     fields(): { [key in string]: FieldDescriptor };
   }
   export declare class Searcher {
-    constructor(index: any);
     termQuery(term: string, field: string, options: IndexRecordOption | null): Query;
     phraseQuery(terms: string[], field: string): Query;
     fuzzyTermQuery(term: string, field: string, options: FuzzyTermQueryOptions | null): Query;

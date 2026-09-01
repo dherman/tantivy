@@ -371,7 +371,7 @@ impl Searcher {
     }
 }
 
-#[neon::export(class)]
+#[neon::export(class, ts_no_constructor)]
 impl Searcher {
     fn new(
         index: Arc<OpenIndex>,
