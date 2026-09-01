@@ -3,11 +3,17 @@ use std::path::PathBuf;
 use std::str::CharIndices;
 use std::sync::{Arc, Mutex};
 
-use neon::{prelude::*, types::JsBigInt, TypeScript};
+use neon::{prelude::*, types::JsBigInt};
 use neon::types::extract::{Error, Json};
+use neon_ts_rs::TypeScript;
+// Brings the ts-rs boundary rung (rung 2) into scope, so foreign types that impl
+// only `ts_rs::TS` (e.g. `IndexMap`) resolve at a `Json<T>` boundary instead of
+// degrading to `any`. Imported as `_` because it's used only via method resolution.
+use neon_ts_rs::TypeScriptExt as _;
+use ts_rs::TS;
 
 use num::{u53, Project};
-use ordermap::OrderMap;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::query::{FuzzyTermQuery, PhrasePrefixQuery, PhraseQuery, RegexQuery, TermQuery};
@@ -28,7 +34,7 @@ mod t {
     pub use tantivy::tokenizer::TextAnalyzer;
 }
 
-#[derive(Serialize, Deserialize, Debug, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
 #[serde(default, rename_all = "camelCase")]
 struct IndexOptions {
     heap_size: f64,
@@ -44,7 +50,7 @@ impl Default for IndexOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
 #[serde(default, rename_all = "camelCase")]
 struct SearchOptions {
     top: f64,
@@ -58,7 +64,7 @@ impl Default for SearchOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
 #[serde(default, rename_all = "camelCase")]
 struct TextAnalyzerOptions {
     remove_long: Option<f64>,
@@ -83,7 +89,7 @@ impl Default for TextAnalyzerOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 #[serde(rename_all = "camelCase")]
 struct FuzzyTermQueryOptions {
     max_distance: u32,
@@ -101,7 +107,7 @@ impl std::default::Default for FuzzyTermQueryOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 #[serde(rename_all = "camelCase")]
 struct Token {
     // TODO: how should we deal with larger than 32 bits?
@@ -181,7 +187,7 @@ impl TextAnalyzerOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, TS, TypeScript)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum IndexRecordOption {
     #[default]
@@ -202,7 +208,7 @@ impl From<IndexRecordOption> for tantivy::schema::IndexRecordOption {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, TS, TypeScript)]
 enum Language {
     Arabic,
     Danish,
@@ -249,7 +255,7 @@ impl From<Language> for TantivyLanguage {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum FieldDescriptor {
     Text {
@@ -267,12 +273,12 @@ enum FieldDescriptor {
     // TODO: | IpAddrFieldDescriptor
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 enum TextOption {
     STORED,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 enum NumericOption {
     STORED,
     INDEXED,
@@ -330,12 +336,12 @@ fn add_field(builder: &mut SchemaBuilder, name: &str, options: &FieldDescriptor)
 #[derive(Clone)]
 struct Schema {
     schema: RefCell<t::Schema>,
-    fields: OrderMap<String, FieldDescriptor>,
+    fields: IndexMap<String, FieldDescriptor>,
 }
 
 #[neon::export(class)]
 impl Schema {
-    fn new(Json(fields): Json<OrderMap<String, FieldDescriptor>>) -> Self {
+    fn new(Json(fields): Json<IndexMap<String, FieldDescriptor>>) -> Self {
         let mut builder = t::Schema::builder();
         for (field_name, options) in fields.iter() {
             add_field(&mut builder, field_name, options);
@@ -346,7 +352,7 @@ impl Schema {
         }
     }
 
-    fn fields(&self) -> Json<OrderMap<String, FieldDescriptor>> {
+    fn fields(&self) -> Json<IndexMap<String, FieldDescriptor>> {
         Json(self.fields.clone())
     }
 }
@@ -633,7 +639,7 @@ struct OpenIndex {
     reader: Mutex<IndexReader>,
 }
 
-#[derive(Serialize, Deserialize, Debug, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum ReloadPolicy {
     CommitWithDelay,
