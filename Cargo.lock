@@ -430,7 +430,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 [[package]]
 name = "neon"
 version = "1.1.1"
-source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#7a405f718540b6e543d6dabbc355b1c21daea5f6"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#c5724dbc32159b9c9b256b908ddae87161a4ca36"
 dependencies = [
  "either",
  "getrandom",
@@ -449,7 +449,7 @@ dependencies = [
 [[package]]
 name = "neon-macros"
 version = "1.1.1"
-source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#7a405f718540b6e543d6dabbc355b1c21daea5f6"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#c5724dbc32159b9c9b256b908ddae87161a4ca36"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -459,7 +459,7 @@ dependencies = [
 [[package]]
 name = "neon-ts-rs"
 version = "0.1.0"
-source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#7a405f718540b6e543d6dabbc355b1c21daea5f6"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#c5724dbc32159b9c9b256b908ddae87161a4ca36"
 dependencies = [
  "neon-ts-rs-macros",
  "neon-typescript",
@@ -469,7 +469,7 @@ dependencies = [
 [[package]]
 name = "neon-ts-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#7a405f718540b6e543d6dabbc355b1c21daea5f6"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#c5724dbc32159b9c9b256b908ddae87161a4ca36"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -479,7 +479,7 @@ dependencies = [
 [[package]]
 name = "neon-typescript"
 version = "0.1.0"
-source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#7a405f718540b6e543d6dabbc355b1c21daea5f6"
+source = "git+https://github.com/neon-bindings/neon.git?branch=dherman%2Fts-type-gen#c5724dbc32159b9c9b256b908ddae87161a4ca36"
 
 [[package]]
 name = "nom"
