@@ -5,15 +5,22 @@ use std::sync::{Arc, Mutex};
 
 use neon::{prelude::*, types::JsBigInt};
 use neon::types::extract::{Error, Json};
+use neon_ts_rs::TypeScript;
+// Lets ts-rs describe foreign types — ones we didn't define, like `IndexMap` —
+// used directly at an export boundary, so they're typed instead of falling back
+// to `any`. One import per module with such exports; it's never called (the
+// import alone turns the coverage on), hence `as _`.
+use neon_ts_rs::TypeScriptExt as _;
+use ts_rs::TS;
 
 use num::{u53, Project};
-use ordermap::OrderMap;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
-use tantivy::query::{Explanation, FuzzyTermQuery, PhrasePrefixQuery, PhraseQuery, RegexQuery, TermQuery};
+use tantivy::query::{FuzzyTermQuery, PhrasePrefixQuery, PhraseQuery, RegexQuery, TermQuery};
 use tantivy::schema::{NumericOptions, SchemaBuilder, TextFieldIndexing};
-use tantivy::tokenizer::{AlphaNumOnlyFilter, AsciiFoldingFilter, Language, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter, TextAnalyzerBuilder, TokenStream, Tokenizer};
-use tantivy::{Document, IndexReader, ReloadPolicy, Score, Term};
+use tantivy::tokenizer::{AlphaNumOnlyFilter, AsciiFoldingFilter, Language as TantivyLanguage, LowerCaser, RemoveLongFilter, SimpleTokenizer, Stemmer, StopWordFilter, TextAnalyzerBuilder, TokenStream, Tokenizer};
+use tantivy::{Document, IndexReader, ReloadPolicy as TantivyReloadPolicy, Score, Term};
 use tantivy::{schema::{Field, TextOptions}, IndexSettings, IndexWriter, TantivyDocument};
 
 pub mod num;
@@ -28,23 +35,23 @@ mod t {
     pub use tantivy::tokenizer::TextAnalyzer;
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
 #[serde(default, rename_all = "camelCase")]
 struct IndexOptions {
     heap_size: f64,
-    reload_on: ReloadOnPolicy,
+    reload_on: ReloadPolicy,
 }
 
 impl Default for IndexOptions {
     fn default() -> Self {
         Self {
             heap_size: 10_000_000.0,
-            reload_on: ReloadOnPolicy::CommitWithDelay,
+            reload_on: ReloadPolicy::CommitWithDelay,
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
 #[serde(default, rename_all = "camelCase")]
 struct SearchOptions {
     top: f64,
@@ -58,19 +65,19 @@ impl Default for SearchOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
 #[serde(default, rename_all = "camelCase")]
-struct TextAnalyzerFilters {
+struct TextAnalyzerOptions {
     remove_long: Option<f64>,
     alpha_num_only: bool,
     ascii_folding: bool,
     lower_case: bool,
     // TODO: split_compound_words
-    stemmer: Option<LanguageName>,
-    filter_stop_words: Option<LanguageName>,
+    stemmer: Option<Language>,
+    filter_stop_words: Option<Language>,
 }
 
-impl Default for TextAnalyzerFilters {
+impl Default for TextAnalyzerOptions {
     fn default() -> Self {
         Self {
             remove_long: None,
@@ -83,7 +90,8 @@ impl Default for TextAnalyzerFilters {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
+#[serde(rename_all = "camelCase")]
 struct FuzzyTermQueryOptions {
     max_distance: u32,
     transposition_costs_one: bool,
@@ -100,7 +108,7 @@ impl std::default::Default for FuzzyTermQueryOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 #[serde(rename_all = "camelCase")]
 struct Token {
     // TODO: how should we deal with larger than 32 bits?
@@ -127,7 +135,7 @@ impl Token {
     }
 }
 
-impl TextAnalyzerFilters {
+impl TextAnalyzerOptions {
     fn apply<T: Tokenizer>(self, builder: TextAnalyzerBuilder<T>) -> t::TextAnalyzer {
         // Step through the filters one at a time. This tail recursive style
         // allows each method to take a generic base type since the specific
@@ -180,7 +188,7 @@ impl TextAnalyzerFilters {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, TS, TypeScript)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum IndexRecordOption {
     #[default]
@@ -201,8 +209,8 @@ impl From<IndexRecordOption> for tantivy::schema::IndexRecordOption {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-enum LanguageName {
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, TS, TypeScript)]
+enum Language {
     Arabic,
     Danish,
     Dutch,
@@ -223,32 +231,32 @@ enum LanguageName {
     Turkish,
 }
 
-impl From<LanguageName> for Language {
-    fn from(value: LanguageName) -> Self {
+impl From<Language> for TantivyLanguage {
+    fn from(value: Language) -> Self {
         match value {
-            LanguageName::Arabic => Language::Arabic,
-            LanguageName::Danish => Language::Danish,
-            LanguageName::Dutch => Language::Dutch,
-            LanguageName::English => Language::English,
-            LanguageName::Finnish => Language::Finnish,
-            LanguageName::French => Language::French,
-            LanguageName::German => Language::German,
-            LanguageName::Greek => Language::Greek,
-            LanguageName::Hungarian => Language::Hungarian,
-            LanguageName::Italian => Language::Italian,
-            LanguageName::Norwegian => Language::Norwegian,
-            LanguageName::Portuguese => Language::Portuguese,
-            LanguageName::Romanian => Language::Romanian,
-            LanguageName::Russian => Language::Russian,
-            LanguageName::Spanish => Language::Spanish,
-            LanguageName::Swedish => Language::Swedish,
-            LanguageName::Tamil => Language::Tamil,
-            LanguageName::Turkish => Language::Turkish,
+            Language::Arabic => TantivyLanguage::Arabic,
+            Language::Danish => TantivyLanguage::Danish,
+            Language::Dutch => TantivyLanguage::Dutch,
+            Language::English => TantivyLanguage::English,
+            Language::Finnish => TantivyLanguage::Finnish,
+            Language::French => TantivyLanguage::French,
+            Language::German => TantivyLanguage::German,
+            Language::Greek => TantivyLanguage::Greek,
+            Language::Hungarian => TantivyLanguage::Hungarian,
+            Language::Italian => TantivyLanguage::Italian,
+            Language::Norwegian => TantivyLanguage::Norwegian,
+            Language::Portuguese => TantivyLanguage::Portuguese,
+            Language::Romanian => TantivyLanguage::Romanian,
+            Language::Russian => TantivyLanguage::Russian,
+            Language::Spanish => TantivyLanguage::Spanish,
+            Language::Swedish => TantivyLanguage::Swedish,
+            Language::Tamil => TantivyLanguage::Tamil,
+            Language::Turkish => TantivyLanguage::Turkish,
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum FieldDescriptor {
     Text {
@@ -266,12 +274,12 @@ enum FieldDescriptor {
     // TODO: | IpAddrFieldDescriptor
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 enum TextOption {
     STORED,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
 enum NumericOption {
     STORED,
     INDEXED,
@@ -329,12 +337,12 @@ fn add_field(builder: &mut SchemaBuilder, name: &str, options: &FieldDescriptor)
 #[derive(Clone)]
 struct Schema {
     schema: RefCell<t::Schema>,
-    fields: OrderMap<String, FieldDescriptor>,
+    fields: IndexMap<String, FieldDescriptor>,
 }
 
 #[neon::export(class)]
 impl Schema {
-    fn new(Json(fields): Json<OrderMap<String, FieldDescriptor>>) -> Self {
+    fn new(Json(fields): Json<IndexMap<String, FieldDescriptor>>) -> Self {
         let mut builder = t::Schema::builder();
         for (field_name, options) in fields.iter() {
             add_field(&mut builder, field_name, options);
@@ -345,7 +353,7 @@ impl Schema {
         }
     }
 
-    fn fields(&self) -> Json<OrderMap<String, FieldDescriptor>> {
+    fn fields(&self) -> Json<IndexMap<String, FieldDescriptor>> {
         Json(self.fields.clone())
     }
 }
@@ -364,7 +372,7 @@ impl Searcher {
     }
 }
 
-#[neon::export(class)]
+#[neon::export(class, ts_no_constructor)]
 impl Searcher {
     fn new(
         index: Arc<OpenIndex>,
@@ -444,7 +452,7 @@ impl Searcher {
         &self,
         query: &Query,
         Json(options): Json<Option<SearchOptions>>,
-    ) -> Json<Vec<(Score, String, Explanation)>>{
+    ) -> Json<Vec<(Score, String)>>{
         let index = self.searcher.index();
         let schema = index.schema();
         let options = options.unwrap_or_default();
@@ -456,7 +464,7 @@ impl Searcher {
                 .iter()
                 .map(|&(score, doc_address)| {
                     let retrieved_doc: TantivyDocument = self.searcher.doc(doc_address).unwrap();
-                    (score, retrieved_doc.to_json(&schema), query.query.explain(&self.searcher, doc_address).unwrap())
+                    (score, retrieved_doc.to_json(&schema))
                 })
                 .collect::<Vec<_>>()
         )
@@ -467,7 +475,7 @@ impl Searcher {
         self,
         query: Query,
         options: Json<Option<SearchOptions>>,
-    ) -> Json<Vec<(Score, String, Explanation)>>{
+    ) -> Json<Vec<(Score, String)>>{
         self.search_sync(&query, options)
     }
 
@@ -501,11 +509,11 @@ struct TextAnalyzer {
 #[neon::export(class)]
 impl TextAnalyzer {
     fn new(
-        filters: Option<Json<TextAnalyzerFilters>>,
+        filters: Option<Json<TextAnalyzerOptions>>,
     ) -> Result<Self, Error> {
         // TODO: need a way to build off something other than a simple tokenizer
         let builder = t::TextAnalyzer::builder(SimpleTokenizer::default());
-        let Json(filters) = filters.unwrap_or(Json(TextAnalyzerFilters::default()));
+        let Json(filters) = filters.unwrap_or(Json(TextAnalyzerOptions::default()));
         let analyzer = filters.apply(builder);
         Ok(Self {
             analyzer: RefCell::new(analyzer),
@@ -617,7 +625,7 @@ struct Query {
     query: Arc<Box<dyn t::Query>>,
 }
 
-#[neon::export(class)]
+#[neon::export(class, ts_no_constructor)]
 impl Query {
     fn new(
         query: Arc<Box<dyn t::Query>>,
@@ -632,18 +640,18 @@ struct OpenIndex {
     reader: Mutex<IndexReader>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum ReloadOnPolicy {
+enum ReloadPolicy {
     CommitWithDelay,
     Manual,
 }
 
-impl From<ReloadOnPolicy> for ReloadPolicy {
-    fn from(policy: ReloadOnPolicy) -> Self {
+impl From<ReloadPolicy> for TantivyReloadPolicy {
+    fn from(policy: ReloadPolicy) -> Self {
         match policy {
-            ReloadOnPolicy::CommitWithDelay => ReloadPolicy::OnCommitWithDelay,
-            ReloadOnPolicy::Manual => ReloadPolicy::Manual,
+            ReloadPolicy::CommitWithDelay => TantivyReloadPolicy::OnCommitWithDelay,
+            ReloadPolicy::Manual => TantivyReloadPolicy::Manual,
         }
     }
 }
