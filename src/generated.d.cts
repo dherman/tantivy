@@ -19,20 +19,22 @@ declare module "./load.cjs" {
     commitSync(): void;
     reload(): Promise<void>;
     reloadSync(): void;
-    addDocument(document: any): bigint;
+    addDocument(document: unknown): bigint;
     searcher(): Searcher;
     registerTokenizer(name: string, tokenizer: TextAnalyzer): void;
   }
   export declare class Query {
+    private constructor();
   }
   export declare class Schema {
     constructor(fields: { [key in string]: FieldDescriptor });
     fields(): { [key in string]: FieldDescriptor };
   }
   export declare class Searcher {
-    termQuery(term: string, field: string, options: IndexRecordOption | null): Query;
+    private constructor();
+    termQuery(term: string, field: string, options: IndexRecordOption | null | undefined): Query;
     phraseQuery(terms: string[], field: string): Query;
-    fuzzyTermQuery(term: string, field: string, options: FuzzyTermQueryOptions | null): Query;
+    fuzzyTermQuery(term: string, field: string, options: FuzzyTermQueryOptions | null | undefined): Query;
     regexpQuery(pattern: string, field: string): Query;
     phrasePrefixQuery(terms: string[], field: string): Query;
     searchSync(query: Query, options: SearchOptions | null): [number, string][];
@@ -40,9 +42,11 @@ declare module "./load.cjs" {
     searchTerms(field: string, pattern: string): string[];
   }
   export declare class TextAnalyzer {
-    constructor(filters: TextAnalyzerOptions | null);
+    constructor(filters: TextAnalyzerOptions | null | undefined);
     tokenize(text: string): Token[];
   }
+
+  export {};
 
 }
 

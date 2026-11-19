@@ -5,12 +5,12 @@ use std::sync::{Arc, Mutex};
 
 use neon::{prelude::*, types::JsBigInt};
 use neon::types::extract::{Error, Json};
-use neon_ts_rs::TypeScript;
+use neon_ts_rs::TsJson;
 // Lets ts-rs describe foreign types — ones we didn't define, like `IndexMap` —
 // used directly at an export boundary, so they're typed instead of falling back
-// to `any`. One import per module with such exports; it's never called (the
+// to `unknown`. One import per module with such exports; it's never called (the
 // import alone turns the coverage on), hence `as _`.
-use neon_ts_rs::TypeScriptExt as _;
+use neon_ts_rs::TsJsonExt as _;
 use ts_rs::TS;
 
 use num::{u53, Project};
@@ -35,7 +35,7 @@ mod t {
     pub use tantivy::tokenizer::TextAnalyzer;
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, TS, TsJson)]
 #[serde(default, rename_all = "camelCase")]
 struct IndexOptions {
     heap_size: f64,
@@ -51,7 +51,7 @@ impl Default for IndexOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, TS, TsJson)]
 #[serde(default, rename_all = "camelCase")]
 struct SearchOptions {
     top: f64,
@@ -65,7 +65,7 @@ impl Default for SearchOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, TS, TsJson)]
 #[serde(default, rename_all = "camelCase")]
 struct TextAnalyzerOptions {
     remove_long: Option<f64>,
@@ -90,7 +90,7 @@ impl Default for TextAnalyzerOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TsJson)]
 #[serde(rename_all = "camelCase")]
 struct FuzzyTermQueryOptions {
     max_distance: u32,
@@ -108,7 +108,7 @@ impl std::default::Default for FuzzyTermQueryOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TsJson)]
 #[serde(rename_all = "camelCase")]
 struct Token {
     // TODO: how should we deal with larger than 32 bits?
@@ -188,7 +188,7 @@ impl TextAnalyzerOptions {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, TS, TsJson)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum IndexRecordOption {
     #[default]
@@ -209,7 +209,7 @@ impl From<IndexRecordOption> for tantivy::schema::IndexRecordOption {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, TS, TsJson)]
 enum Language {
     Arabic,
     Danish,
@@ -256,7 +256,7 @@ impl From<Language> for TantivyLanguage {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TsJson)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum FieldDescriptor {
     Text {
@@ -274,12 +274,12 @@ enum FieldDescriptor {
     // TODO: | IpAddrFieldDescriptor
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TsJson)]
 enum TextOption {
     STORED,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, Clone, TS, TsJson)]
 enum NumericOption {
     STORED,
     INDEXED,
@@ -640,7 +640,7 @@ struct OpenIndex {
     reader: Mutex<IndexReader>,
 }
 
-#[derive(Serialize, Deserialize, Debug, TS, TypeScript)]
+#[derive(Serialize, Deserialize, Debug, TS, TsJson)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum ReloadPolicy {
     CommitWithDelay,
