@@ -5,6 +5,7 @@ declare module "./load.cjs" {
   export type FuzzyTermQueryOptions = { maxDistance: number, transpositionCostsOne: boolean, isPrefix: boolean, };
   export type IndexOptions = { heapSize: number, reloadOn: ReloadPolicy, };
   export type IndexRecordOption = "BASIC" | "WITH_FREQS" | "WITH_FREQS_AND_POSITIONS";
+  export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]: JsonValue } | null;
   export type Language = "Arabic" | "Danish" | "Dutch" | "English" | "Finnish" | "French" | "German" | "Greek" | "Hungarian" | "Italian" | "Norwegian" | "Portuguese" | "Romanian" | "Russian" | "Spanish" | "Swedish" | "Tamil" | "Turkish";
   export type NumericOption = "STORED" | "INDEXED";
   export type ReloadPolicy = "COMMIT_WITH_DELAY" | "MANUAL";
@@ -19,7 +20,7 @@ declare module "./load.cjs" {
     commitSync(): void;
     reload(): Promise<void>;
     reloadSync(): void;
-    addDocument(document: unknown): bigint;
+    addDocument(document: { [key in string]: JsonValue }): bigint;
     searcher(): Searcher;
     registerTokenizer(name: string, tokenizer: TextAnalyzer): void;
   }
