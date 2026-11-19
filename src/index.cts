@@ -3,19 +3,7 @@
 import type { FieldDescriptor } from "./load.cjs";
 
 // Re-export all types generated from the Rust definitions.
-export type {
-  FieldDescriptor,
-  FuzzyTermQueryOptions,
-  IndexOptions,
-  IndexRecordOption,
-  Language,
-  NumericOption,
-  ReloadPolicy,
-  SearchOptions,
-  TextAnalyzerOptions,
-  TextOption,
-  Token,
-} from "./load.cjs";
+export type * from "./load.cjs";
 
 // Type aliases that aren't auto-generated.
 export type Field = number;
