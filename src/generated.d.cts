@@ -43,7 +43,7 @@ declare module "./load.cjs" {
   }
   export declare class TextAnalyzer {
     constructor(filters: TextAnalyzerOptions | null | undefined);
-    tokenize(text: string): Token[];
+    tokenize(text: string): Array<Token>;
   }
 
   export {};
