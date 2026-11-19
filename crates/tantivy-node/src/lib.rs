@@ -445,11 +445,11 @@ impl Searcher {
     fn search_sync(
         &self,
         query: &Query,
-        options: Option<Json<SearchOptions>>,
+        Json(options): Json<Option<SearchOptions>>,
     ) -> Json<Vec<(Score, String)>>{
         let index = self.searcher.index();
         let schema = index.schema();
-        let options = options.map(|Json(o)| o).unwrap_or_default();
+        let options = options.unwrap_or_default();
         let collector = TopDocs::with_limit(options.top as usize);
         Json(
             self.searcher
@@ -468,7 +468,7 @@ impl Searcher {
     fn search(
         self,
         query: Query,
-        options: Option<Json<SearchOptions>>,
+        options: Json<Option<SearchOptions>>,
     ) -> Json<Vec<(Score, String)>>{
         self.search_sync(&query, options)
     }
@@ -541,12 +541,12 @@ impl Index {
     fn new(
         path: String,
         schema: Schema,
-        options: Option<Json<IndexOptions>>,
+        Json(options): Json<Option<IndexOptions>>,
     ) -> Result<Self, Error> {
         let dir_path = PathBuf::from(path);
         let dir = tantivy::directory::MmapDirectory::open(dir_path)?;
         let index = t::Index::create(dir, schema.schema.borrow().clone(), IndexSettings::default())?;
-        let options = options.map(|Json(o)| o).unwrap_or_default();
+        let options = options.unwrap_or_default();
         let reader = Mutex::new(
             index
                 .reader_builder()
