@@ -15,7 +15,7 @@ declare module "./load.cjs" {
   export type Token = { byteOffsetFrom: number, byteOffsetTo: number, charOffsetFrom: number, charOffsetTo: number, position: number, text: string, positionLength: number, };
 
   export declare class Index {
-    constructor(path: string, schema: Schema, options: IndexOptions | null | undefined);
+    constructor(path: string, schema: Schema, options?: IndexOptions | null);
     commit(): Promise<void>;
     commitSync(): void;
     reload(): Promise<void>;
@@ -33,17 +33,17 @@ declare module "./load.cjs" {
   }
   export declare class Searcher {
     private constructor();
-    termQuery(term: string, field: string, options: IndexRecordOption | null | undefined): Query;
+    termQuery(term: string, field: string, options?: IndexRecordOption | null): Query;
     phraseQuery(terms: string[], field: string): Query;
-    fuzzyTermQuery(term: string, field: string, options: FuzzyTermQueryOptions | null | undefined): Query;
+    fuzzyTermQuery(term: string, field: string, options?: FuzzyTermQueryOptions | null): Query;
     regexpQuery(pattern: string, field: string): Query;
     phrasePrefixQuery(terms: string[], field: string): Query;
-    searchSync(query: Query, options: SearchOptions | null | undefined): [number, string][];
-    search(query: Query, options: SearchOptions | null | undefined): Promise<[number, string][]>;
+    searchSync(query: Query, options?: SearchOptions | null): [number, string][];
+    search(query: Query, options?: SearchOptions | null): Promise<[number, string][]>;
     searchTerms(field: string, pattern: string): string[];
   }
   export declare class TextAnalyzer {
-    constructor(filters: TextAnalyzerOptions | null | undefined);
+    constructor(filters?: TextAnalyzerOptions | null);
     tokenize(text: string): Array<Token>;
   }
 
