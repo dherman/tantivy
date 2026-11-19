@@ -15,7 +15,7 @@ declare module "./load.cjs" {
   export type Token = { byteOffsetFrom: number, byteOffsetTo: number, charOffsetFrom: number, charOffsetTo: number, position: number, text: string, positionLength: number, };
 
   export declare class Index {
-    constructor(path: string, schema: Schema, options: IndexOptions | null);
+    constructor(path: string, schema: Schema, options: IndexOptions | null | undefined);
     commit(): Promise<void>;
     commitSync(): void;
     reload(): Promise<void>;
@@ -38,8 +38,8 @@ declare module "./load.cjs" {
     fuzzyTermQuery(term: string, field: string, options: FuzzyTermQueryOptions | null | undefined): Query;
     regexpQuery(pattern: string, field: string): Query;
     phrasePrefixQuery(terms: string[], field: string): Query;
-    searchSync(query: Query, options: SearchOptions | null): [number, string][];
-    search(query: Query, options: SearchOptions | null): Promise<[number, string][]>;
+    searchSync(query: Query, options: SearchOptions | null | undefined): [number, string][];
+    search(query: Query, options: SearchOptions | null | undefined): Promise<[number, string][]>;
     searchTerms(field: string, pattern: string): string[];
   }
   export declare class TextAnalyzer {
